@@ -14,8 +14,11 @@ export default function ERPPortal() {
   const [selectedMachine, setSelectedMachine] = useState<any>(null);
   const [specSheetMachine, setSpecSheetMachine] = useState<any>(null); 
 
-  // Added import_fee to the initial state
+  // Add & Edit Forms
   const [formData, setFormData] = useState({ machine_name: '', serial_number: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '' });
+  const [editingMachine, setEditingMachine] = useState<any>(null);
+  const [editFormData, setEditFormData] = useState<any>({ machine_name: '', serial_number: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '' });
+  
   const [repairForm, setRepairForm] = useState({ item_description: '', part_cost: '', labor_hours: '', invoice_id: '' });
   const [imageFile, setImageFile] = useState<any>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -133,6 +136,36 @@ export default function ERPPortal() {
     setIsUploading(false);
   }
 
+  // --- EDIT MACHINE LOGIC ---
+  function openEditModal(machine: any) {
+    setEditingMachine(machine);
+    setEditFormData({
+      machine_name: machine.machine_name || '',
+      serial_number: machine.serial_number || '',
+      purchase_price: machine.purchase_price || '',
+      purchase_iva: machine.purchase_iva || '',
+      shipping_in_cost: machine.shipping_in_cost || '',
+      import_fee: machine.import_fee || ''
+    });
+  }
+
+  async function handleUpdateMachine(e: any) {
+    e.preventDefault();
+    const { error } = await supabase.from('inventory').update({
+      machine_name: editFormData.machine_name,
+      serial_number: editFormData.serial_number,
+      purchase_price: parseFloat(editFormData.purchase_price) || 0,
+      purchase_iva: parseFloat(editFormData.purchase_iva) || 0,
+      shipping_in_cost: parseFloat(editFormData.shipping_in_cost) || 0,
+      import_fee: parseFloat(editFormData.import_fee) || 0,
+    }).eq('id', editingMachine.id);
+    
+    if (!error) {
+      setEditingMachine(null);
+      fetchInventory();
+    }
+  }
+
   async function handleAddRepair(e: any) {
     e.preventDefault();
     const payload: any = {
@@ -206,7 +239,7 @@ export default function ERPPortal() {
             <p className={`text-3xl font-bold ${netIva > 0 ? 'text-red-600' : 'text-teal-600'}`}>{formatMXN(netIva)}</p>
             <p className="text-xs text-gray-400 mt-1">{netIva > 0 ? 'You owe SAT' : 'Balance in favor'}</p>
           </div>
-          {/* NEW: PROFIT WIDGET */}
+          {/* PROFIT WIDGET */}
           <div className={`flex-1 min-w-[200px] bg-white p-6 rounded-lg shadow border-l-4 ${netProfit >= 0 ? 'border-green-500' : 'border-red-500'}`}>
             <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide mb-1">Realized Profit/Loss</h3>
             <p className={`text-3xl font-bold ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -263,9 +296,14 @@ export default function ERPPortal() {
                           <span className="text-gray-800 font-bold">{formatMXN(calculateTotalCost(machine))}</span>
                         </div>
                         
-                        <button onClick={(e) => { e.stopPropagation(); setSpecSheetMachine(machine); }} className="mt-4 w-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold py-2 rounded transition border border-gray-300">
-                          📄 View PDF Spec Sheet
-                        </button>
+                        <div className="flex gap-2 mt-4">
+                          <button onClick={(e) => { e.stopPropagation(); setSpecSheetMachine(machine); }} className="w-1/2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold py-2 rounded transition border border-gray-300">
+                            📄 Spec Sheet
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); openEditModal(machine); }} className="w-1/2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold py-2 rounded transition border border-blue-200">
+                            ✏️ Edit
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -410,6 +448,43 @@ export default function ERPPortal() {
                   </div>
 
                   <div className="flex justify-end gap-2 mt-4"><button type="button" onClick={() => setIsAdding(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button><button type="submit" disabled={isUploading} className="px-4 py-2 bg-blue-600 text-white rounded font-bold">Save Machine</button></div>
+               </form>
+            </div>
+          </div>
+        )}
+
+        {/* --- EDIT MACHINE MODAL --- */}
+        {editingMachine && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-blue-500">
+               <h2 className="text-2xl font-bold mb-4 text-gray-800">Edit Machine Details</h2>
+               <form onSubmit={handleUpdateMachine} className="flex flex-col gap-4">
+                  <input required placeholder="Machine Name" className="p-2 border rounded text-black" value={editFormData.machine_name} onChange={e => setEditFormData({...editFormData, machine_name: e.target.value})} />
+                  <input required placeholder="Serial Number" className="p-2 border rounded text-black" value={editFormData.serial_number} onChange={e => setEditFormData({...editFormData, serial_number: e.target.value})} />
+                  
+                  <div className="flex gap-4">
+                     <div className="w-1/2">
+                       <label className="block text-xs font-bold text-gray-500 uppercase">Purchase Price</label>
+                       <input required type="number" step="0.01" className="p-2 w-full border rounded text-black" value={editFormData.purchase_price} onChange={e => setEditFormData({...editFormData, purchase_price: e.target.value})} />
+                     </div>
+                     <div className="w-1/2">
+                       <label className="flex justify-between text-xs font-bold text-gray-500 uppercase">
+                         <span>IVA Paid</span>
+                         <button type="button" tabIndex={-1} onClick={() => setEditFormData({...editFormData, purchase_iva: calculateIva(editFormData.purchase_price)})} className="text-blue-600 hover:underline">Auto 16%</button>
+                       </label>
+                       <input required type="number" step="0.01" className="p-2 w-full border rounded text-black text-red-600" value={editFormData.purchase_iva} onChange={e => setEditFormData({...editFormData, purchase_iva: e.target.value})} />
+                     </div>
+                  </div>
+
+                  <div>
+                     <label className="block text-xs font-bold text-gray-500 uppercase">Shipping & Import (No IVA)</label>
+                     <div className="flex gap-4 mt-1">
+                       <input required type="number" step="0.01" placeholder="Shipping Cost" className="p-2 w-1/2 border rounded text-black" value={editFormData.shipping_in_cost} onChange={e => setEditFormData({...editFormData, shipping_in_cost: e.target.value})} />
+                       <input required type="number" step="0.01" placeholder="Import Fee" className="p-2 w-1/2 border rounded text-black" value={editFormData.import_fee} onChange={e => setEditFormData({...editFormData, import_fee: e.target.value})} />
+                     </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 mt-4"><button type="button" onClick={() => setEditingMachine(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button><button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold">Update Details</button></div>
                </form>
             </div>
           </div>
