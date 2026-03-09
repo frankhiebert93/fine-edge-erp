@@ -36,18 +36,24 @@ export default function ERPPortal() {
   const [isAddingInvoice, setIsAddingInvoice] = useState(false);
   const [providerForm, setProviderForm] = useState({ name: '', contact_info: '', notes: '' });
   
-  // Updated Invoice State with no_factura toggle
   const [invoiceForm, setInvoiceForm] = useState({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', notes: '', no_factura: false });
   const [invoiceFile, setInvoiceFile] = useState<any>(null);
   const [isUploadingInvoice, setIsUploadingInvoice] = useState(false);
 
-  // Edit Forms (Invoices)
   const [editingInvoice, setEditingInvoice] = useState<any>(null);
   const [editInvoiceForm, setEditInvoiceForm] = useState<any>({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', notes: '', no_factura: false });
+
+  // --- STATE: SAT PAYMENTS ---
+  const [satPayments, setSatPayments] = useState<any[]>([]);
+  const [isAddingSatPayment, setIsAddingSatPayment] = useState(false);
+  const [satPaymentForm, setSatPaymentForm] = useState({ payment_date: '', amount: '', notes: '' });
+  const [satReceiptFile, setSatReceiptFile] = useState<any>(null);
+  const [isUploadingSat, setIsUploadingSat] = useState(false);
 
   useEffect(() => {
     fetchInventory();
     fetchProvidersAndInvoices();
+    fetchSatPayments();
   }, []);
 
   async function fetchInventory() {
@@ -62,6 +68,11 @@ export default function ERPPortal() {
     if (provData) setProviders(provData);
     const { data: invData } = await supabase.from('parts_invoices').select('*, providers(name)').order('invoice_date', { ascending: false });
     if (invData) setInvoices(invData);
+  }
+
+  async function fetchSatPayments() {
+    const { data, error } = await supabase.from('iva_payments').select('*').order('payment_date', { ascending: false });
+    if (!error) setSatPayments(data || []);
   }
 
   // --- CALCULATIONS & METRICS ---
@@ -81,10 +92,14 @@ export default function ERPPortal() {
   const totalInvoicesValue = invoices.reduce((total: any, inv: any) => total + Number(inv.total_amount), 0);
   const netProfit = soldMachines.reduce((total: any, m: any) => total + (Number(m.sale_price) - calculateTotalCost(m)), 0);
 
+  // IVA Math
   const totalIvaPaid = machines.reduce((sum: any, m: any) => sum + Number(m.purchase_iva || 0), 0) + 
                        invoices.reduce((sum: any, inv: any) => sum + Number(inv.iva_amount || 0), 0);
   const totalIvaCollected = soldMachines.reduce((sum: any, m: any) => sum + Number(m.sale_iva || 0), 0);
-  const netIva = totalIvaCollected - totalIvaPaid;
+  
+  const grossIvaBalance = totalIvaCollected - totalIvaPaid;
+  const totalIvaPaidToSat = satPayments.reduce((sum: any, p: any) => sum + Number(p.amount), 0);
+  const currentIvaOwed = grossIvaBalance - totalIvaPaidToSat;
 
   const filteredMachines = machines.filter((machine: any) => 
     machine.machine_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -216,7 +231,6 @@ export default function ERPPortal() {
     setIsUploading(false);
   }
 
-  // --- EDIT MACHINE LOGIC ---
   function openEditModal(machine: any) {
     setEditingMachine(machine);
     setEditFormData({
@@ -340,6 +354,32 @@ export default function ERPPortal() {
     }
   }
 
+  // --- SAT PAYMENT LOGIC ---
+  async function handleAddSatPayment(e: any) {
+    e.preventDefault();
+    setIsUploadingSat(true);
+    let receiptUrl = null;
+    if (satReceiptFile) {
+      const fileName = `sat-${Date.now()}-${satReceiptFile.name}`;
+      const { error } = await supabase.storage.from('invoices').upload(fileName, satReceiptFile);
+      if (!error) receiptUrl = supabase.storage.from('invoices').getPublicUrl(fileName).data.publicUrl;
+    }
+    const { error } = await supabase.from('iva_payments').insert([{
+      payment_date: satPaymentForm.payment_date || new Date().toISOString().split('T')[0],
+      amount: parseFloat(satPaymentForm.amount) || 0,
+      notes: satPaymentForm.notes,
+      receipt_url: receiptUrl
+    }]);
+    
+    if (!error) {
+      setIsAddingSatPayment(false);
+      setSatPaymentForm({ payment_date: '', amount: '', notes: '' });
+      setSatReceiptFile(null);
+      fetchSatPayments();
+    }
+    setIsUploadingSat(false);
+  }
+
   const calculateIva = (amount: any) => (parseFloat(amount) * 0.16).toFixed(2);
 
   return (
@@ -364,11 +404,20 @@ export default function ERPPortal() {
             <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide mb-1">Total Expenses</h3>
             <p className="text-3xl font-bold text-gray-600">{formatMXN(totalInvoicesValue)}</p>
           </div>
-          <div className={`flex-1 min-w-[200px] bg-white p-6 rounded-lg shadow border-l-4 ${netIva > 0 ? 'border-red-500' : 'border-teal-500'}`}>
-            <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide mb-1">Net IVA Balance</h3>
-            <p className={`text-3xl font-bold ${netIva > 0 ? 'text-red-600' : 'text-teal-600'}`}>{formatMXN(netIva)}</p>
-            <p className="text-xs text-gray-400 mt-1">{netIva > 0 ? 'You owe SAT' : 'Balance in favor'}</p>
+          
+          {/* UPDATED NET IVA WIDGET */}
+          <div className={`flex-1 min-w-[250px] bg-white p-6 rounded-lg shadow border-l-4 ${currentIvaOwed > 0 ? 'border-red-500' : 'border-teal-500'}`}>
+            <div className="flex justify-between items-start mb-1">
+               <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide">Current IVA Owed</h3>
+               <button onClick={() => setIsAddingSatPayment(true)} className="text-xs bg-red-50 text-red-600 hover:bg-red-100 font-bold px-2 py-1 rounded border border-red-200 transition shadow-sm">+ Pay SAT</button>
+            </div>
+            <p className={`text-3xl font-bold ${currentIvaOwed > 0 ? 'text-red-600' : 'text-teal-600'}`}>{formatMXN(currentIvaOwed)}</p>
+            <div className="text-xs text-gray-600 mt-3 pt-2 border-t flex flex-col gap-1">
+               <div className="flex justify-between"><span>Accrued Balance:</span> <span className="font-semibold">{formatMXN(grossIvaBalance)}</span></div>
+               <div className="flex justify-between"><span>Paid to SAT:</span> <span className="font-semibold text-green-600">-{formatMXN(totalIvaPaidToSat)}</span></div>
+            </div>
           </div>
+
           <div className={`flex-1 min-w-[200px] bg-white p-6 rounded-lg shadow border-l-4 ${netProfit >= 0 ? 'border-green-500' : 'border-red-500'}`}>
             <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide mb-1">Realized Profit/Loss</h3>
             <p className={`text-3xl font-bold ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatMXN(netProfit)}</p>
@@ -381,6 +430,7 @@ export default function ERPPortal() {
           <div className="flex gap-4">
             <button onClick={() => setActiveTab('kanban')} className={`px-6 py-2 rounded font-bold transition ${activeTab === 'kanban' ? 'bg-blue-600 text-white shadow' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>Machinery Board</button>
             <button onClick={() => setActiveTab('invoices')} className={`px-6 py-2 rounded font-bold transition ${activeTab === 'invoices' ? 'bg-blue-600 text-white shadow' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>Parts & Purchases</button>
+            <button onClick={() => setActiveTab('sat')} className={`px-6 py-2 rounded font-bold transition ${activeTab === 'sat' ? 'bg-red-600 text-white shadow' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>SAT Records</button>
           </div>
           
           {activeTab === 'kanban' && (
@@ -493,6 +543,37 @@ export default function ERPPortal() {
           </div>
         )}
 
+        {/* ========================================= TAB 3: SAT PAYMENTS ========================================= */}
+        {activeTab === 'sat' && (
+          <div className="bg-white p-6 rounded-lg shadow min-h-[500px]">
+            <div className="flex justify-between items-center mb-6 border-b pb-4">
+              <h2 className="text-2xl font-bold text-gray-800">SAT Tax Declarations & Payments</h2>
+              <button onClick={() => setIsAddingSatPayment(true)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-bold shadow transition">+ Log SAT Payment</button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-gray-100 text-gray-700">
+                    <th className="p-3 border-b">Payment Date</th><th className="p-3 border-b">Amount Paid to SAT</th><th className="p-3 border-b">Notes / Month Declared</th><th className="p-3 border-b">Acuse / Receipt</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {satPayments.length === 0 ? <tr><td colSpan={4} className="p-4 text-center text-gray-500">No SAT payments logged yet.</td></tr> : (
+                    satPayments.map((payment: any) => (
+                      <tr key={payment.id} className="hover:bg-gray-50 border-b text-gray-800">
+                        <td className="p-3">{payment.payment_date}</td>
+                        <td className="p-3 font-bold text-green-600">{formatMXN(payment.amount)}</td>
+                        <td className="p-3 text-sm">{payment.notes}</td>
+                        <td className="p-3">{payment.receipt_url ? <a href={payment.receipt_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-bold">View</a> : <span className="text-gray-400 text-sm">No file</span>}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* --- ADD INVOICE MODAL --- */}
         {isAddingInvoice && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -500,7 +581,6 @@ export default function ERPPortal() {
               <h2 className="text-2xl font-bold mb-4 text-gray-800">Log Part Purchase</h2>
               <form onSubmit={handleAddInvoice} className="flex flex-col gap-4">
                 
-                {/* No Factura Toggle */}
                 <label className="flex items-center gap-2 mb-2 p-2 bg-gray-50 border rounded cursor-pointer hover:bg-gray-100">
                   <input type="checkbox" className="w-4 h-4 text-blue-600" checked={invoiceForm.no_factura} onChange={e => {
                     const isChecked = e.target.checked;
@@ -545,7 +625,6 @@ export default function ERPPortal() {
               <h2 className="text-2xl font-bold mb-4 text-gray-800">Edit Purchase</h2>
               <form onSubmit={handleUpdateInvoice} className="flex flex-col gap-4">
 
-                {/* No Factura Toggle */}
                 <label className="flex items-center gap-2 mb-2 p-2 bg-gray-50 border rounded cursor-pointer hover:bg-gray-100">
                   <input type="checkbox" className="w-4 h-4 text-blue-600" checked={editInvoiceForm.no_factura} onChange={e => {
                     const isChecked = e.target.checked;
@@ -593,6 +672,34 @@ export default function ERPPortal() {
                 <input type="text" placeholder="Contact Info" className="p-2 border rounded text-black" value={providerForm.contact_info} onChange={e => setProviderForm({...providerForm, contact_info: e.target.value})} />
                 <textarea placeholder="Notes" className="p-2 border rounded text-black h-20" value={providerForm.notes} onChange={e => setProviderForm({...providerForm, notes: e.target.value})} />
                 <div className="flex justify-end gap-2 mt-4"><button type="button" onClick={() => setIsAddingProvider(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button><button type="submit" className="px-4 py-2 bg-gray-800 text-white rounded font-bold hover:bg-black">Save Provider</button></div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* --- ADD SAT PAYMENT MODAL --- */}
+        {isAddingSatPayment && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-red-500">
+              <h2 className="text-2xl font-bold mb-4 text-gray-800">Log SAT Payment</h2>
+              <form onSubmit={handleAddSatPayment} className="flex flex-col gap-4">
+                <div>
+                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Payment Date</label>
+                   <input required type="date" className="p-2 w-full border rounded text-black" value={satPaymentForm.payment_date} onChange={e => setSatPaymentForm({...satPaymentForm, payment_date: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Amount Paid to SAT</label>
+                  <input required type="number" step="0.01" className="p-2 w-full border rounded text-black font-bold text-red-600" value={satPaymentForm.amount} onChange={e => setSatPaymentForm({...satPaymentForm, amount: e.target.value})} />
+                </div>
+                <textarea placeholder="Notes (e.g., Declaration for March 2026)" className="p-2 border rounded text-black h-20" value={satPaymentForm.notes} onChange={e => setSatPaymentForm({...satPaymentForm, notes: e.target.value})} />
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Upload Acuse / Receipt</label>
+                  <input type="file" accept=".pdf,image/*" onChange={(e: any) => setSatReceiptFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-red-50 file:text-red-700" />
+                </div>
+                <div className="flex justify-end gap-2 mt-4">
+                  <button type="button" onClick={() => setIsAddingSatPayment(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
+                  <button type="submit" disabled={isUploadingSat} className="px-4 py-2 bg-red-600 text-white rounded font-bold hover:bg-red-700">Save Payment</button>
+                </div>
               </form>
             </div>
           </div>
