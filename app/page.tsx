@@ -17,7 +17,7 @@ export default function ERPPortal() {
     } else {
       const pin = window.prompt("Enter Admin PIN to unlock editing:");
       // CHANGE THIS PIN RIGHT HERE:
-      if (pin === "6542") { 
+      if (pin === "1234") { 
         setIsAdmin(true);
       } else if (pin !== null) {
         alert("Incorrect PIN. View Only Mode active.");
@@ -72,6 +72,9 @@ export default function ERPPortal() {
   
   const [editingSatPayment, setEditingSatPayment] = useState<any>(null);
   const [editSatPaymentForm, setEditSatPaymentForm] = useState<any>({ payment_date: '', amount: '', notes: '' });
+
+  // --- STATE: EXCHANGE RATE ---
+  const [exchangeRate, setExchangeRate] = useState('18.00');
 
   useEffect(() => {
     fetchInventory();
@@ -544,10 +547,26 @@ export default function ERPPortal() {
             </div>
           </div>
 
-          <div className={`flex-1 min-w-[200px] bg-white p-6 rounded-lg shadow border-l-4 ${netProfit >= 0 ? 'border-green-500' : 'border-red-500'}`}>
-            <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide mb-1">Realized Profit/Loss</h3>
+          <div className={`flex-1 min-w-[250px] bg-white p-6 rounded-lg shadow border-l-4 ${netProfit >= 0 ? 'border-green-500' : 'border-red-500'}`}>
+            <div className="flex justify-between items-start mb-1">
+               <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide">Realized Profit</h3>
+               <div className="flex items-center gap-1">
+                 <span className="text-xs font-bold text-gray-500">Camnosa: $</span>
+                 <input 
+                   type="number" 
+                   step="0.01"
+                   value={exchangeRate}
+                   onChange={(e) => setExchangeRate(e.target.value)}
+                   className="w-16 p-1 text-xs border rounded text-black font-bold focus:outline-none focus:ring-1 focus:ring-green-500 bg-gray-50"
+                 />
+               </div>
+            </div>
             <p className={`text-3xl font-bold ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatMXN(netProfit)}</p>
-            <p className="text-xs text-gray-400 mt-1">From sold machines</p>
+            <div className="mt-2 inline-block bg-green-50 border border-green-200 rounded px-2 py-1">
+              <span className="text-sm font-bold text-green-800">
+                USD {parseFloat(exchangeRate) > 0 ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(netProfit / parseFloat(exchangeRate)) : '$0.00'}
+              </span>
+            </div>
           </div>
         </div>
 
