@@ -9,8 +9,7 @@ export default function ERPPortal() {
   const [searchTerm, setSearchTerm] = useState('');
 
   // --- STATE: MACHINERY ---
-  const [machines, setMachines] = useState([]);
-  const [isAdding, setIsAdding] = useState(false);
+const [machines, setMachines] = useState<any[]>([]);  const [isAdding, setIsAdding] = useState(false);
   const [selectedMachine, setSelectedMachine] = useState(null);
   const [specSheetMachine, setSpecSheetMachine] = useState(null); 
 
