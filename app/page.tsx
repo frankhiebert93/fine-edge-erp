@@ -8,8 +8,24 @@ export default function ERPPortal() {
   const [activeTab, setActiveTab] = useState('kanban'); 
   const [searchTerm, setSearchTerm] = useState('');
 
+  // --- SECURITY: ADMIN MODE ---
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  const handleAdminToggle = () => {
+    if (isAdmin) {
+      setIsAdmin(false); // Lock it back
+    } else {
+      const pin = window.prompt("Enter Admin PIN to unlock editing:");
+      // CHANGE THIS PIN RIGHT HERE:
+      if (pin === "1234") { 
+        setIsAdmin(true);
+      } else if (pin !== null) {
+        alert("Incorrect PIN. View Only Mode active.");
+      }
+    }
+  };
+
   // --- HELPER: FILE SANITIZER ---
-  // Strips spaces and accents from Mexican PDFs (e.g. "Declaración.pdf" -> "Declaracin.pdf")
   const sanitizeFileName = (name: string) => name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
 
   // --- STATE: MACHINERY ---
@@ -161,10 +177,17 @@ export default function ERPPortal() {
   };
 
   // --- KANBAN & SALES LOGIC ---
-  const handleDragStart = (e: any, machineId: any) => e.dataTransfer.setData('machineId', machineId);
-  const handleDragOver = (e: any) => e.preventDefault();
+  const handleDragStart = (e: any, machineId: any) => {
+    if (!isAdmin) return;
+    e.dataTransfer.setData('machineId', machineId);
+  };
+  const handleDragOver = (e: any) => {
+    if (!isAdmin) return;
+    e.preventDefault();
+  };
   
   const handleDrop = async (e: any, newStatus: any) => {
+    if (!isAdmin) return;
     e.preventDefault();
     const machineId = e.dataTransfer.getData('machineId');
     if (newStatus === 'Sold') {
@@ -178,6 +201,7 @@ export default function ERPPortal() {
 
   async function handleSellMachine(e: any) {
     e.preventDefault();
+    if (!isAdmin) return;
     setIsUploading(true);
     let saleInvoiceUrl = sellingMachine.sale_invoice_url;
 
@@ -209,6 +233,7 @@ export default function ERPPortal() {
 
   async function handleAddMachine(e: any) {
     e.preventDefault();
+    if (!isAdmin) return;
     setIsUploading(true);
     let imageUrl = null;
     let pedimentoUrl = null;
@@ -253,6 +278,7 @@ export default function ERPPortal() {
   }
 
   function openEditModal(machine: any) {
+    if (!isAdmin) return;
     setEditingMachine(machine);
     setEditFormData({
       machine_name: machine.machine_name || '',
@@ -266,6 +292,7 @@ export default function ERPPortal() {
 
   async function handleUpdateMachine(e: any) {
     e.preventDefault();
+    if (!isAdmin) return;
     setIsUploading(true);
     let pedimentoUrl = editingMachine.pedimento_url;
 
@@ -299,6 +326,7 @@ export default function ERPPortal() {
 
   async function handleAddRepair(e: any) {
     e.preventDefault();
+    if (!isAdmin) return;
     const payload: any = {
       inventory_id: selectedMachine.id, item_description: repairForm.item_description,
       part_cost: parseFloat(repairForm.part_cost) || 0, labor_hours: parseFloat(repairForm.labor_hours) || 0,
@@ -311,6 +339,7 @@ export default function ERPPortal() {
   }
 
   async function handleDeleteRepair(repairId: any) {
+    if (!isAdmin) return;
     await supabase.from('repair_logs').delete().eq('id', repairId); fetchInventory();
     const { data } = await supabase.from('inventory').select('*, repair_logs(*, parts_invoices(invoice_number, file_url, providers(name)))').eq('id', selectedMachine.id).single();
     setSelectedMachine(data);
@@ -319,12 +348,14 @@ export default function ERPPortal() {
   // --- PROVIDER & INVOICE LOGIC ---
   async function handleAddProvider(e: any) {
     e.preventDefault();
+    if (!isAdmin) return;
     await supabase.from('providers').insert([providerForm]);
     setIsAddingProvider(false); setProviderForm({ name: '', contact_info: '', notes: '' }); fetchProvidersAndInvoices();
   }
 
   async function handleAddInvoice(e: any) {
     e.preventDefault();
+    if (!isAdmin) return;
     setIsUploadingInvoice(true);
     let fileUrl = null;
     if (invoiceFile) {
@@ -353,6 +384,7 @@ export default function ERPPortal() {
   }
 
   function openEditInvoiceModal(invoice: any) {
+    if (!isAdmin) return;
     setEditingInvoice(invoice);
     const isSinFactura = invoice.invoice_number === 'Sin Factura';
     setEditInvoiceForm({
@@ -368,6 +400,7 @@ export default function ERPPortal() {
 
   async function handleUpdateInvoice(e: any) {
     e.preventDefault();
+    if (!isAdmin) return;
     const { error } = await supabase.from('parts_invoices').update({
       provider_id: editInvoiceForm.provider_id,
       invoice_number: editInvoiceForm.no_factura ? 'Sin Factura' : editInvoiceForm.invoice_number,
@@ -386,6 +419,7 @@ export default function ERPPortal() {
   // --- SAT PAYMENT LOGIC ---
   async function handleAddSatPayment(e: any) {
     e.preventDefault();
+    if (!isAdmin) return;
     setIsUploadingSat(true);
     let receiptUrl = null;
     
@@ -420,6 +454,7 @@ export default function ERPPortal() {
   }
 
   function openEditSatPaymentModal(payment: any) {
+    if (!isAdmin) return;
     setEditingSatPayment(payment);
     setEditSatPaymentForm({
       payment_date: payment.payment_date || '',
@@ -430,6 +465,7 @@ export default function ERPPortal() {
 
   async function handleUpdateSatPayment(e: any) {
     e.preventDefault();
+    if (!isAdmin) return;
     setIsUploadingSat(true);
     let receiptUrl = editingSatPayment.receipt_url;
 
@@ -468,7 +504,15 @@ export default function ERPPortal() {
       <div className={`min-h-screen bg-gray-100 p-8 ${specSheetMachine ? 'print:hidden hidden' : ''}`}>
         
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-gray-800">Fine Edge Machines - ERP</h1>
+          <div className="flex items-center gap-4">
+            <h1 className="text-3xl font-bold text-gray-800">Fine Edge Machines - ERP</h1>
+            <button 
+              onClick={handleAdminToggle} 
+              className={`text-xs px-3 py-1.5 rounded font-bold transition shadow-sm ${isAdmin ? 'bg-green-100 text-green-700 border border-green-300 hover:bg-green-200' : 'bg-gray-200 text-gray-600 border border-gray-300 hover:bg-gray-300'}`}
+            >
+              {isAdmin ? '🔓 Admin Unlocked' : '🔒 View Only'}
+            </button>
+          </div>
         </div>
 
         {/* DASHBOARD METRICS */}
@@ -486,11 +530,12 @@ export default function ERPPortal() {
             <p className="text-3xl font-bold text-gray-600">{formatMXN(totalInvoicesValue)}</p>
           </div>
           
-          {/* UPDATED NET IVA WIDGET */}
           <div className={`flex-1 min-w-[250px] bg-white p-6 rounded-lg shadow border-l-4 ${currentIvaOwed > 0 ? 'border-red-500' : 'border-teal-500'}`}>
             <div className="flex justify-between items-start mb-1">
                <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide">Current IVA Owed</h3>
-               <button onClick={() => setIsAddingSatPayment(true)} className="text-xs bg-red-50 text-red-600 hover:bg-red-100 font-bold px-2 py-1 rounded border border-red-200 transition shadow-sm">+ Pay SAT</button>
+               {isAdmin && (
+                 <button onClick={() => setIsAddingSatPayment(true)} className="text-xs bg-red-50 text-red-600 hover:bg-red-100 font-bold px-2 py-1 rounded border border-red-200 transition shadow-sm">+ Pay SAT</button>
+               )}
             </div>
             <p className={`text-3xl font-bold ${currentIvaOwed > 0 ? 'text-red-600' : 'text-teal-600'}`}>{formatMXN(currentIvaOwed)}</p>
             <div className="text-xs text-gray-600 mt-3 pt-2 border-t flex flex-col gap-1">
@@ -517,12 +562,16 @@ export default function ERPPortal() {
           {activeTab === 'kanban' && (
             <div className="flex gap-4 items-center">
               <input type="text" placeholder="🔍 Search name or S/N..." className="p-2 border border-gray-300 rounded text-black w-64 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-              <button onClick={exportMachines} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold shadow transition">📊 Export CSV</button>
-              <button onClick={() => setIsAdding(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow transition">+ Add Machine</button>
+              {isAdmin && (
+                <>
+                  <button onClick={exportMachines} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold shadow transition">📊 Export CSV</button>
+                  <button onClick={() => setIsAdding(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow transition">+ Add Machine</button>
+                </>
+              )}
             </div>
           )}
 
-          {activeTab === 'invoices' && (
+          {activeTab === 'invoices' && isAdmin && (
             <div className="flex gap-4 items-center">
               <button onClick={exportInvoices} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold shadow transition">📊 Export CSV</button>
             </div>
@@ -541,7 +590,7 @@ export default function ERPPortal() {
                   {filteredMachines.filter((m: any) => m.status === column).map((machine: any) => {
                     const machineProfit = Number(machine.sale_price) - calculateTotalCost(machine);
                     return (
-                      <div key={machine.id} draggable onDragStart={(e) => handleDragStart(e, machine.id)} onClick={() => setSelectedMachine(machine)} className="bg-white p-4 rounded shadow cursor-grab active:cursor-grabbing border-l-4 border-blue-500 hover:shadow-lg transition transform hover:-translate-y-1">
+                      <div key={machine.id} draggable={isAdmin} onDragStart={(e) => handleDragStart(e, machine.id)} onClick={() => setSelectedMachine(machine)} className={`bg-white p-4 rounded shadow ${isAdmin ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} border-l-4 border-blue-500 hover:shadow-lg transition transform hover:-translate-y-1`}>
                         {machine.image_url && <img src={machine.image_url} alt="Machine" className="w-full h-40 object-cover rounded mb-3 border" />}
                         <h3 className="font-bold text-gray-800">{machine.machine_name}</h3>
                         <p className="text-sm text-gray-500 mb-2">SN: {machine.serial_number}</p>
@@ -568,12 +617,14 @@ export default function ERPPortal() {
                         </div>
                         
                         <div className="flex gap-2 mt-4">
-                          <button onClick={(e) => { e.stopPropagation(); setSpecSheetMachine(machine); }} className="w-1/2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold py-2 rounded transition border border-gray-300">
+                          <button onClick={(e) => { e.stopPropagation(); setSpecSheetMachine(machine); }} className={`bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold py-2 rounded transition border border-gray-300 ${isAdmin ? 'w-1/2' : 'w-full'}`}>
                             📄 Spec Sheet
                           </button>
-                          <button onClick={(e) => { e.stopPropagation(); openEditModal(machine); }} className="w-1/2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold py-2 rounded transition border border-blue-200">
-                            ✏️ Edit
-                          </button>
+                          {isAdmin && (
+                            <button onClick={(e) => { e.stopPropagation(); openEditModal(machine); }} className="w-1/2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold py-2 rounded transition border border-blue-200">
+                              ✏️ Edit
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -589,20 +640,23 @@ export default function ERPPortal() {
           <div className="bg-white p-6 rounded-lg shadow min-h-[500px]">
             <div className="flex justify-between items-center mb-6 border-b pb-4">
               <h2 className="text-2xl font-bold text-gray-800">Parts & Purchases</h2>
-              <div className="flex gap-4">
-                <button onClick={() => setIsAddingProvider(true)} className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded font-bold shadow transition">+ New Provider</button>
-                <button onClick={() => setIsAddingInvoice(true)} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold shadow transition">+ Add Purchase</button>
-              </div>
+              {isAdmin && (
+                <div className="flex gap-4">
+                  <button onClick={() => setIsAddingProvider(true)} className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded font-bold shadow transition">+ New Provider</button>
+                  <button onClick={() => setIsAddingInvoice(true)} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold shadow transition">+ Add Purchase</button>
+                </div>
+              )}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-100 text-gray-700">
-                    <th className="p-3 border-b">Date</th><th className="p-3 border-b">Provider</th><th className="p-3 border-b">Inv / Ticket #</th><th className="p-3 border-b">Total Amount</th><th className="p-3 border-b">IVA Paid</th><th className="p-3 border-b">Receipt</th><th className="p-3 border-b">Actions</th>
+                    <th className="p-3 border-b">Date</th><th className="p-3 border-b">Provider</th><th className="p-3 border-b">Inv / Ticket #</th><th className="p-3 border-b">Total Amount</th><th className="p-3 border-b">IVA Paid</th><th className="p-3 border-b">Receipt</th>
+                    {isAdmin && <th className="p-3 border-b">Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {invoices.length === 0 ? <tr><td colSpan={7} className="p-4 text-center text-gray-500">No purchases logged yet.</td></tr> : (
+                  {invoices.length === 0 ? <tr><td colSpan={isAdmin ? 7 : 6} className="p-4 text-center text-gray-500">No purchases logged yet.</td></tr> : (
                     invoices.map((inv: any) => (
                       <tr key={inv.id} className="hover:bg-gray-50 border-b text-gray-800">
                         <td className="p-3">{inv.invoice_date}</td><td className="p-3 font-semibold">{inv.providers?.name || 'Unknown'}</td>
@@ -612,9 +666,11 @@ export default function ERPPortal() {
                         <td className="p-3 font-bold text-gray-800">{formatMXN(inv.total_amount)}</td>
                         <td className="p-3 text-red-600">{formatMXN(inv.iva_amount)}</td>
                         <td className="p-3">{inv.file_url ? <a href={inv.file_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-bold">View</a> : <span className="text-gray-400 text-sm">No file</span>}</td>
-                        <td className="p-3">
-                          <button onClick={() => openEditInvoiceModal(inv)} className="text-blue-600 hover:text-blue-800 text-sm font-bold bg-blue-50 px-2 py-1 rounded border border-blue-200">✏️ Edit</button>
-                        </td>
+                        {isAdmin && (
+                          <td className="p-3">
+                            <button onClick={() => openEditInvoiceModal(inv)} className="text-blue-600 hover:text-blue-800 text-sm font-bold bg-blue-50 px-2 py-1 rounded border border-blue-200">✏️ Edit</button>
+                          </td>
+                        )}
                       </tr>
                     ))
                   )}
@@ -629,26 +685,31 @@ export default function ERPPortal() {
           <div className="bg-white p-6 rounded-lg shadow min-h-[500px]">
             <div className="flex justify-between items-center mb-6 border-b pb-4">
               <h2 className="text-2xl font-bold text-gray-800">SAT Tax Declarations & Payments</h2>
-              <button onClick={() => setIsAddingSatPayment(true)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-bold shadow transition">+ Log SAT Payment</button>
+              {isAdmin && (
+                <button onClick={() => setIsAddingSatPayment(true)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-bold shadow transition">+ Log SAT Payment</button>
+              )}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-100 text-gray-700">
-                    <th className="p-3 border-b">Payment Date</th><th className="p-3 border-b">Amount Paid to SAT</th><th className="p-3 border-b">Notes / Month Declared</th><th className="p-3 border-b">Acuse / Receipt</th><th className="p-3 border-b">Actions</th>
+                    <th className="p-3 border-b">Payment Date</th><th className="p-3 border-b">Amount Paid to SAT</th><th className="p-3 border-b">Notes / Month Declared</th><th className="p-3 border-b">Acuse / Receipt</th>
+                    {isAdmin && <th className="p-3 border-b">Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {satPayments.length === 0 ? <tr><td colSpan={5} className="p-4 text-center text-gray-500">No SAT payments logged yet.</td></tr> : (
+                  {satPayments.length === 0 ? <tr><td colSpan={isAdmin ? 5 : 4} className="p-4 text-center text-gray-500">No SAT payments logged yet.</td></tr> : (
                     satPayments.map((payment: any) => (
                       <tr key={payment.id} className="hover:bg-gray-50 border-b text-gray-800">
                         <td className="p-3">{payment.payment_date}</td>
                         <td className="p-3 font-bold text-green-600">{formatMXN(payment.amount)}</td>
                         <td className="p-3 text-sm">{payment.notes}</td>
                         <td className="p-3">{payment.receipt_url ? <a href={payment.receipt_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-bold">View</a> : <span className="text-gray-400 text-sm">No file</span>}</td>
-                        <td className="p-3">
-                          <button onClick={() => openEditSatPaymentModal(payment)} className="text-red-600 hover:text-red-800 text-sm font-bold bg-red-50 px-2 py-1 rounded border border-red-200">✏️ Edit</button>
-                        </td>
+                        {isAdmin && (
+                          <td className="p-3">
+                            <button onClick={() => openEditSatPaymentModal(payment)} className="text-red-600 hover:text-red-800 text-sm font-bold bg-red-50 px-2 py-1 rounded border border-red-200">✏️ Edit</button>
+                          </td>
+                        )}
                       </tr>
                     ))
                   )}
@@ -659,7 +720,7 @@ export default function ERPPortal() {
         )}
 
         {/* --- ADD INVOICE MODAL --- */}
-        {isAddingInvoice && (
+        {isAddingInvoice && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
               <h2 className="text-2xl font-bold mb-4 text-gray-800">Log Part Purchase</h2>
@@ -703,7 +764,7 @@ export default function ERPPortal() {
         )}
 
         {/* --- EDIT INVOICE MODAL --- */}
-        {editingInvoice && (
+        {editingInvoice && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-blue-500">
               <h2 className="text-2xl font-bold mb-4 text-gray-800">Edit Purchase</h2>
@@ -747,7 +808,7 @@ export default function ERPPortal() {
         )}
 
         {/* --- ADD PROVIDER MODAL --- */}
-        {isAddingProvider && (
+        {isAddingProvider && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
               <h2 className="text-2xl font-bold mb-4 text-gray-800">Add New Provider</h2>
@@ -762,7 +823,7 @@ export default function ERPPortal() {
         )}
 
         {/* --- ADD SAT PAYMENT MODAL --- */}
-        {isAddingSatPayment && (
+        {isAddingSatPayment && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-red-500">
               <h2 className="text-2xl font-bold mb-4 text-gray-800">Log SAT Payment</h2>
@@ -790,7 +851,7 @@ export default function ERPPortal() {
         )}
 
         {/* --- EDIT SAT PAYMENT MODAL --- */}
-        {editingSatPayment && (
+        {editingSatPayment && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-red-500">
               <h2 className="text-2xl font-bold mb-4 text-gray-800">Edit SAT Payment</h2>
@@ -819,7 +880,7 @@ export default function ERPPortal() {
         )}
 
         {/* --- SELL MACHINE MODAL --- */}
-        {sellingMachine && (
+        {sellingMachine && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-sm shadow-xl border-t-8 border-green-500">
               <h2 className="text-2xl font-bold mb-2 text-gray-800">Sell Machine</h2>
@@ -844,7 +905,7 @@ export default function ERPPortal() {
         )}
 
         {/* --- ADD MACHINE MODAL --- */}
-        {isAdding && (
+        {isAdding && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
                <h2 className="text-2xl font-bold mb-4 text-gray-800">Log New Machine</h2>
@@ -890,7 +951,7 @@ export default function ERPPortal() {
         )}
 
         {/* --- EDIT MACHINE MODAL --- */}
-        {editingMachine && (
+        {editingMachine && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-blue-500">
                <h2 className="text-2xl font-bold mb-4 text-gray-800">Edit Machine Details</h2>
@@ -952,24 +1013,29 @@ export default function ERPPortal() {
                           <div><span className="font-semibold">{log.item_description}</span><span className="text-xs text-gray-500 ml-2">({log.labor_hours} hrs)</span></div>
                           {log.parts_invoices && <span className="text-xs text-blue-600 mt-1 flex items-center gap-1">🧾 {log.parts_invoices.providers?.name} Inv: {log.parts_invoices.invoice_number}</span>}
                         </div>
-                        <div className="flex items-center gap-4"><span className="font-medium text-green-700">{formatMXN(log.part_cost)}</span><button onClick={() => handleDeleteRepair(log.id)} className="text-red-500 hover:text-red-700 text-sm font-bold">X</button></div>
+                        {isAdmin && (
+                          <div className="flex items-center gap-4"><span className="font-medium text-green-700">{formatMXN(log.part_cost)}</span><button onClick={() => handleDeleteRepair(log.id)} className="text-red-500 hover:text-red-700 text-sm font-bold">X</button></div>
+                        )}
                       </li>
                     ))}
                   </ul>
                 )}
               </div>
-              <form onSubmit={handleAddRepair} className="bg-blue-50 p-4 rounded border border-blue-100 flex flex-col gap-2">
-                <div className="flex gap-2 w-full">
-                  <input required placeholder="Fix (e.g., New Motor)" className="flex-grow p-2 border rounded text-black" value={repairForm.item_description} onChange={e => setRepairForm({...repairForm, item_description: e.target.value})} />
-                  <input required type="number" step="0.01" placeholder="Cost" className="w-24 p-2 border rounded text-black" value={repairForm.part_cost} onChange={e => setRepairForm({...repairForm, part_cost: e.target.value})} />
-                  <input type="number" step="0.1" placeholder="Hours" className="w-24 p-2 border rounded text-black" value={repairForm.labor_hours} onChange={e => setRepairForm({...repairForm, labor_hours: e.target.value})} />
-                  <button type="submit" className="bg-green-600 hover:bg-green-700 text-white px-4 rounded font-bold">+</button>
-                </div>
-                <select className="w-full p-2 border rounded text-sm text-gray-700 mt-1" value={repairForm.invoice_id} onChange={e => setRepairForm({...repairForm, invoice_id: e.target.value})}>
-                  <option value="">-- Optional: Link to an Invoice --</option>
-                  {invoices.map((inv: any) => <option key={inv.id} value={inv.id}>{inv.providers?.name} | Inv: {inv.invoice_number}</option>)}
-                </select>
-              </form>
+              
+              {isAdmin && (
+                <form onSubmit={handleAddRepair} className="bg-blue-50 p-4 rounded border border-blue-100 flex flex-col gap-2">
+                  <div className="flex gap-2 w-full">
+                    <input required placeholder="Fix (e.g., New Motor)" className="flex-grow p-2 border rounded text-black" value={repairForm.item_description} onChange={e => setRepairForm({...repairForm, item_description: e.target.value})} />
+                    <input required type="number" step="0.01" placeholder="Cost" className="w-24 p-2 border rounded text-black" value={repairForm.part_cost} onChange={e => setRepairForm({...repairForm, part_cost: e.target.value})} />
+                    <input type="number" step="0.1" placeholder="Hours" className="w-24 p-2 border rounded text-black" value={repairForm.labor_hours} onChange={e => setRepairForm({...repairForm, labor_hours: e.target.value})} />
+                    <button type="submit" className="bg-green-600 hover:bg-green-700 text-white px-4 rounded font-bold">+</button>
+                  </div>
+                  <select className="w-full p-2 border rounded text-sm text-gray-700 mt-1" value={repairForm.invoice_id} onChange={e => setRepairForm({...repairForm, invoice_id: e.target.value})}>
+                    <option value="">-- Optional: Link to an Invoice --</option>
+                    {invoices.map((inv: any) => <option key={inv.id} value={inv.id}>{inv.providers?.name} | Inv: {inv.invoice_number}</option>)}
+                  </select>
+                </form>
+              )}
             </div>
           </div>
         )}
