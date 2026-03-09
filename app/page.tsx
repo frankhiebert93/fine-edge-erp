@@ -46,7 +46,7 @@ export default function ERPPortal() {
 
   // --- STATE: SELLING A MACHINE ---
   const [sellingMachine, setSellingMachine] = useState<any>(null);
-  const [sellForm, setSellForm] = useState({ sale_price: '', sale_iva: '' });
+  const [sellForm, setSellForm] = useState({ sale_price: '', sale_iva: '', is_paid: false });
   const [saleInvoiceFile, setSaleInvoiceFile] = useState<any>(null);
 
   // --- STATE: INVOICES & PROVIDERS ---
@@ -116,19 +116,21 @@ export default function ERPPortal() {
   
   const currentInventoryValue = inShopMachines.reduce((total: any, m: any) => total + calculateTotalCost(m), 0);
   const totalInvoicesValue = invoices.reduce((total: any, inv: any) => total + Number(inv.total_amount), 0);
+  
+  // Realized profit stays as total sold (accrual accounting to see if business model is profitable)
   const netProfit = soldMachines.reduce((total: any, m: any) => total + (Number(m.sale_price) - calculateTotalCost(m)), 0);
 
-  // IVA Math
+  // IVA Math (CASH BASIS - Only counts what has actually been paid to you)
   const totalIvaPaid = machines.reduce((sum: any, m: any) => sum + Number(m.purchase_iva || 0), 0) + 
                        invoices.reduce((sum: any, inv: any) => sum + Number(inv.iva_amount || 0), 0);
-  const totalIvaCollected = soldMachines.reduce((sum: any, m: any) => sum + Number(m.sale_iva || 0), 0);
+  const totalIvaCollected = soldMachines.filter((m:any) => m.is_paid).reduce((sum: any, m: any) => sum + Number(m.sale_iva || 0), 0);
   
   const grossIvaBalance = totalIvaCollected - totalIvaPaid;
   const totalIvaPaidToSat = satPayments.reduce((sum: any, p: any) => sum + Number(p.amount), 0);
   const currentIvaOwed = grossIvaBalance - totalIvaPaidToSat;
 
-  // CASH FLOW MATH
-  const totalCashIn = soldMachines.reduce((sum: any, m: any) => sum + Number(m.sale_price) + Number(m.sale_iva || 0), 0);
+  // CASH FLOW MATH (CASH BASIS - Only counts money actually in the bank)
+  const totalCashIn = soldMachines.filter((m:any) => m.is_paid).reduce((sum: any, m: any) => sum + Number(m.sale_price) + Number(m.sale_iva || 0), 0);
   const totalMachineSpend = machines.reduce((sum: any, m: any) => sum + Number(m.purchase_price) + Number(m.purchase_iva || 0) + Number(m.shipping_in_cost) + Number(m.import_fee || 0), 0);
   const unlinkedRepairsCost = machines.reduce((sum: any, m: any) => sum + (m.repair_logs?.filter((log: any) => !log.invoice_id).reduce((s: any, l: any) => s + Number(l.part_cost), 0) || 0), 0);
   const totalCashOut = totalMachineSpend + totalInvoicesValue + totalIvaPaidToSat + unlinkedRepairsCost;
@@ -162,6 +164,7 @@ export default function ERPPortal() {
       Machine_Name: m.machine_name,
       Serial_Number: m.serial_number,
       Status: m.status,
+      Paid_By_Customer: m.is_paid ? 'Yes' : 'No',
       Purchase_Price: m.purchase_price,
       Purchase_IVA: m.purchase_iva,
       Shipping_Cost: m.shipping_in_cost,
@@ -205,8 +208,8 @@ export default function ERPPortal() {
       setSellingMachine(machine);
       return; 
     }
-    setMachines((prev: any[]) => prev.map((m: any) => m.id === machineId ? { ...m, status: newStatus, sale_price: 0, sale_iva: 0 } : m));
-    await supabase.from('inventory').update({ status: newStatus, sale_price: 0, sale_iva: 0 }).eq('id', machineId);
+    setMachines((prev: any[]) => prev.map((m: any) => m.id === machineId ? { ...m, status: newStatus, sale_price: 0, sale_iva: 0, is_paid: false } : m));
+    await supabase.from('inventory').update({ status: newStatus, sale_price: 0, sale_iva: 0, is_paid: false }).eq('id', machineId);
   };
 
   async function handleSellMachine(e: any) {
@@ -229,16 +232,29 @@ export default function ERPPortal() {
       status: 'Sold', 
       sale_price: parseFloat(sellForm.sale_price) || 0, 
       sale_iva: parseFloat(sellForm.sale_iva) || 0,
+      is_paid: sellForm.is_paid,
       sale_invoice_url: saleInvoiceUrl
     }).eq('id', sellingMachine.id);
 
     if (!error) { 
       setSellingMachine(null); 
-      setSellForm({ sale_price: '', sale_iva: '' }); 
+      setSellForm({ sale_price: '', sale_iva: '', is_paid: false }); 
       setSaleInvoiceFile(null);
       fetchInventory(); 
     }
     setIsUploading(false);
+  }
+
+  async function handleTogglePaid(e: any, machineId: string, currentStatus: boolean) {
+    e.stopPropagation();
+    if (!isAdmin) return;
+    const newStatus = !currentStatus;
+    
+    // Instantly update the UI so it feels fast
+    setMachines((prev: any[]) => prev.map(m => m.id === machineId ? { ...m, is_paid: newStatus } : m));
+    
+    // Save to database
+    await supabase.from('inventory').update({ is_paid: newStatus }).eq('id', machineId);
   }
 
   async function handleAddMachine(e: any) {
@@ -272,7 +288,7 @@ export default function ERPPortal() {
       machine_name: formData.machine_name, serial_number: formData.serial_number,
       purchase_price: parseFloat(formData.purchase_price) || 0, purchase_iva: parseFloat(formData.purchase_iva) || 0, 
       shipping_in_cost: parseFloat(formData.shipping_in_cost) || 0, import_fee: parseFloat(formData.import_fee) || 0,
-      status: 'Intake', image_url: imageUrl, pedimento_url: pedimentoUrl
+      status: 'Intake', image_url: imageUrl, pedimento_url: pedimentoUrl, is_paid: false
     }]);
 
     if (!error) { 
@@ -577,7 +593,6 @@ export default function ERPPortal() {
             </div>
           </div>
 
-          {/* NEW NET CASH FLOW WIDGET */}
           <div className={`flex-1 min-w-[200px] bg-white p-6 rounded-lg shadow border-l-4 ${netCashFlow >= 0 ? 'border-purple-500' : 'border-red-500'}`}>
             <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide mb-1">Net Cash Flow</h3>
             <p className={`text-3xl font-bold ${netCashFlow >= 0 ? 'text-purple-600' : 'text-red-600'}`}>{formatMXN(netCashFlow)}</p>
@@ -636,6 +651,16 @@ export default function ERPPortal() {
                              <span className={`font-bold mt-1 block border-t pt-1 ${machineProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                                Profit: {formatMXN(machineProfit)}
                              </span>
+                             <div className="mt-2 pt-2 border-t flex justify-between items-center">
+                                <span className="font-bold text-gray-600">Payment:</span>
+                                <button 
+                                  onClick={(e) => handleTogglePaid(e, machine.id, machine.is_paid)}
+                                  disabled={!isAdmin}
+                                  className={`px-2 py-1 rounded font-bold text-xs transition shadow-sm ${machine.is_paid ? 'bg-green-100 text-green-700 border border-green-300' : 'bg-yellow-100 text-yellow-700 border border-yellow-300'} ${!isAdmin && 'cursor-default'}`}
+                                >
+                                  {machine.is_paid ? '✅ PAID' : '⏳ PENDING'}
+                                </button>
+                             </div>
                            </div>
                         )}
 
@@ -928,6 +953,12 @@ export default function ERPPortal() {
                   <label className="flex justify-between text-sm font-bold text-gray-700 mb-1"><span>IVA Collected</span><button type="button" tabIndex={-1} onClick={() => setSellForm({...sellForm, sale_iva: calculateIva(sellForm.sale_price)})} className="text-blue-600 hover:underline">Auto 16%</button></label>
                   <input required type="number" step="0.01" className="w-full p-3 border rounded text-black text-green-700 font-bold" value={sellForm.sale_iva} onChange={e => setSellForm({...sellForm, sale_iva: e.target.value})} />
                 </div>
+                
+                <label className="flex items-center gap-2 mt-2 p-3 bg-gray-50 border rounded cursor-pointer hover:bg-gray-100">
+                  <input type="checkbox" className="w-5 h-5 text-green-600" checked={sellForm.is_paid} onChange={e => setSellForm({...sellForm, is_paid: e.target.checked})} />
+                  <span className="text-sm font-bold text-gray-700">Payment Received Immediately?</span>
+                </label>
+
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">Upload Sale Invoice (Optional)</label>
                   <input type="file" onChange={(e: any) => setSaleInvoiceFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
@@ -1111,7 +1142,7 @@ export default function ERPPortal() {
                   </ul>
                 </div>
                 <div className="mt-auto border-t-2 border-gray-200 pt-4">
-                  <p className="font-bold text-gray-800">Contact Us:</p>
+                  <p className="font-bold text-gray-800">Contact Us:625-119-1400</p>
                   <p className="text-gray-600">fineedgemachines@gmail.com</p>
                   <p className="text-gray-600 italic mt-2">Pricing and freight shipping options available upon request.</p>
                 </div>
