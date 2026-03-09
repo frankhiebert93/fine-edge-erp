@@ -35,13 +35,15 @@ export default function ERPPortal() {
   const [isAddingProvider, setIsAddingProvider] = useState(false);
   const [isAddingInvoice, setIsAddingInvoice] = useState(false);
   const [providerForm, setProviderForm] = useState({ name: '', contact_info: '', notes: '' });
-  const [invoiceForm, setInvoiceForm] = useState({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', notes: '' });
+  
+  // Updated Invoice State with no_factura toggle
+  const [invoiceForm, setInvoiceForm] = useState({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', notes: '', no_factura: false });
   const [invoiceFile, setInvoiceFile] = useState<any>(null);
   const [isUploadingInvoice, setIsUploadingInvoice] = useState(false);
 
   // Edit Forms (Invoices)
   const [editingInvoice, setEditingInvoice] = useState<any>(null);
-  const [editInvoiceForm, setEditInvoiceForm] = useState<any>({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', notes: '' });
+  const [editInvoiceForm, setEditInvoiceForm] = useState<any>({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', notes: '', no_factura: false });
 
   useEffect(() => {
     fetchInventory();
@@ -292,23 +294,32 @@ export default function ERPPortal() {
       if (!error) fileUrl = supabase.storage.from('invoices').getPublicUrl(fileName).data.publicUrl;
     }
     await supabase.from('parts_invoices').insert([{
-      provider_id: invoiceForm.provider_id, invoice_number: invoiceForm.invoice_number,
-      total_amount: parseFloat(invoiceForm.total_amount) || 0, iva_amount: parseFloat(invoiceForm.iva_amount) || 0,
-      invoice_date: invoiceForm.invoice_date || new Date().toISOString().split('T')[0], notes: invoiceForm.notes, file_url: fileUrl
+      provider_id: invoiceForm.provider_id, 
+      invoice_number: invoiceForm.no_factura ? 'Sin Factura' : invoiceForm.invoice_number,
+      total_amount: parseFloat(invoiceForm.total_amount) || 0, 
+      iva_amount: invoiceForm.no_factura ? 0 : (parseFloat(invoiceForm.iva_amount) || 0),
+      invoice_date: invoiceForm.invoice_date || new Date().toISOString().split('T')[0], 
+      notes: invoiceForm.notes, 
+      file_url: fileUrl
     }]);
-    setIsAddingInvoice(false); setInvoiceForm({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', notes: '' }); setInvoiceFile(null); fetchProvidersAndInvoices();
+    setIsAddingInvoice(false); 
+    setInvoiceForm({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', notes: '', no_factura: false }); 
+    setInvoiceFile(null); 
+    fetchProvidersAndInvoices();
     setIsUploadingInvoice(false);
   }
 
   function openEditInvoiceModal(invoice: any) {
     setEditingInvoice(invoice);
+    const isSinFactura = invoice.invoice_number === 'Sin Factura';
     setEditInvoiceForm({
       provider_id: invoice.provider_id || '',
       invoice_number: invoice.invoice_number || '',
       total_amount: invoice.total_amount || '',
       iva_amount: invoice.iva_amount || '',
       invoice_date: invoice.invoice_date || '',
-      notes: invoice.notes || ''
+      notes: invoice.notes || '',
+      no_factura: isSinFactura
     });
   }
 
@@ -316,9 +327,9 @@ export default function ERPPortal() {
     e.preventDefault();
     const { error } = await supabase.from('parts_invoices').update({
       provider_id: editInvoiceForm.provider_id,
-      invoice_number: editInvoiceForm.invoice_number,
+      invoice_number: editInvoiceForm.no_factura ? 'Sin Factura' : editInvoiceForm.invoice_number,
       total_amount: parseFloat(editInvoiceForm.total_amount) || 0,
-      iva_amount: parseFloat(editInvoiceForm.iva_amount) || 0,
+      iva_amount: editInvoiceForm.no_factura ? 0 : (parseFloat(editInvoiceForm.iva_amount) || 0),
       invoice_date: editInvoiceForm.invoice_date,
       notes: editInvoiceForm.notes
     }).eq('id', editingInvoice.id);
@@ -369,7 +380,7 @@ export default function ERPPortal() {
         <div className="flex justify-between items-end mb-8 border-b pb-4">
           <div className="flex gap-4">
             <button onClick={() => setActiveTab('kanban')} className={`px-6 py-2 rounded font-bold transition ${activeTab === 'kanban' ? 'bg-blue-600 text-white shadow' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>Machinery Board</button>
-            <button onClick={() => setActiveTab('invoices')} className={`px-6 py-2 rounded font-bold transition ${activeTab === 'invoices' ? 'bg-blue-600 text-white shadow' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>Parts & Invoices</button>
+            <button onClick={() => setActiveTab('invoices')} className={`px-6 py-2 rounded font-bold transition ${activeTab === 'invoices' ? 'bg-blue-600 text-white shadow' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>Parts & Purchases</button>
           </div>
           
           {activeTab === 'kanban' && (
@@ -446,24 +457,27 @@ export default function ERPPortal() {
         {activeTab === 'invoices' && (
           <div className="bg-white p-6 rounded-lg shadow min-h-[500px]">
             <div className="flex justify-between items-center mb-6 border-b pb-4">
-              <h2 className="text-2xl font-bold text-gray-800">Parts Purchases</h2>
+              <h2 className="text-2xl font-bold text-gray-800">Parts & Purchases</h2>
               <div className="flex gap-4">
                 <button onClick={() => setIsAddingProvider(true)} className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded font-bold shadow transition">+ New Provider</button>
-                <button onClick={() => setIsAddingInvoice(true)} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold shadow transition">+ Add Invoice</button>
+                <button onClick={() => setIsAddingInvoice(true)} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold shadow transition">+ Add Purchase</button>
               </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-100 text-gray-700">
-                    <th className="p-3 border-b">Date</th><th className="p-3 border-b">Provider</th><th className="p-3 border-b">Inv #</th><th className="p-3 border-b">Total Amount</th><th className="p-3 border-b">IVA Paid</th><th className="p-3 border-b">Receipt</th><th className="p-3 border-b">Actions</th>
+                    <th className="p-3 border-b">Date</th><th className="p-3 border-b">Provider</th><th className="p-3 border-b">Inv / Ticket #</th><th className="p-3 border-b">Total Amount</th><th className="p-3 border-b">IVA Paid</th><th className="p-3 border-b">Receipt</th><th className="p-3 border-b">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {invoices.length === 0 ? <tr><td colSpan={7} className="p-4 text-center text-gray-500">No invoices logged yet.</td></tr> : (
+                  {invoices.length === 0 ? <tr><td colSpan={7} className="p-4 text-center text-gray-500">No purchases logged yet.</td></tr> : (
                     invoices.map((inv: any) => (
                       <tr key={inv.id} className="hover:bg-gray-50 border-b text-gray-800">
-                        <td className="p-3">{inv.invoice_date}</td><td className="p-3 font-semibold">{inv.providers?.name || 'Unknown'}</td><td className="p-3">{inv.invoice_number || 'N/A'}</td>
+                        <td className="p-3">{inv.invoice_date}</td><td className="p-3 font-semibold">{inv.providers?.name || 'Unknown'}</td>
+                        <td className="p-3">
+                           {inv.invoice_number === 'Sin Factura' ? <span className="bg-gray-200 text-gray-600 px-2 py-1 rounded text-xs font-bold">Sin Factura</span> : inv.invoice_number}
+                        </td>
                         <td className="p-3 font-bold text-gray-800">{formatMXN(inv.total_amount)}</td>
                         <td className="p-3 text-red-600">{formatMXN(inv.iva_amount)}</td>
                         <td className="p-3">{inv.file_url ? <a href={inv.file_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-bold">View</a> : <span className="text-gray-400 text-sm">No file</span>}</td>
@@ -483,29 +497,42 @@ export default function ERPPortal() {
         {isAddingInvoice && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
-              <h2 className="text-2xl font-bold mb-4 text-gray-800">Log Part Invoice</h2>
+              <h2 className="text-2xl font-bold mb-4 text-gray-800">Log Part Purchase</h2>
               <form onSubmit={handleAddInvoice} className="flex flex-col gap-4">
+                
+                {/* No Factura Toggle */}
+                <label className="flex items-center gap-2 mb-2 p-2 bg-gray-50 border rounded cursor-pointer hover:bg-gray-100">
+                  <input type="checkbox" className="w-4 h-4 text-blue-600" checked={invoiceForm.no_factura} onChange={e => {
+                    const isChecked = e.target.checked;
+                    setInvoiceForm({...invoiceForm, no_factura: isChecked, invoice_number: isChecked ? 'Sin Factura' : '', iva_amount: isChecked ? '0' : ''});
+                  }} />
+                  <span className="text-sm font-bold text-gray-700">Non-Invoice Purchase (Sin Factura)</span>
+                </label>
+
                 <select required className="w-full p-2 border rounded text-black" value={invoiceForm.provider_id} onChange={e => setInvoiceForm({...invoiceForm, provider_id: e.target.value})}>
                   <option value="">Select a provider...</option>
                   {providers.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
                 <div className="flex gap-4">
-                  <input type="text" placeholder="Invoice #" className="p-2 w-1/2 border rounded text-black" value={invoiceForm.invoice_number} onChange={e => setInvoiceForm({...invoiceForm, invoice_number: e.target.value})} />
+                  <input type="text" placeholder="Invoice / Ticket #" disabled={invoiceForm.no_factura} className="p-2 w-1/2 border rounded text-black disabled:bg-gray-200 disabled:text-gray-500" value={invoiceForm.invoice_number} onChange={e => setInvoiceForm({...invoiceForm, invoice_number: e.target.value})} />
                   <input required type="date" className="p-2 w-1/2 border rounded text-black" value={invoiceForm.invoice_date} onChange={e => setInvoiceForm({...invoiceForm, invoice_date: e.target.value})} />
                 </div>
                 <div className="flex gap-4 items-end">
                   <div className="w-1/2">
-                    <label className="block text-xs font-bold text-gray-500 uppercase">Subtotal / Total</label>
+                    <label className="block text-xs font-bold text-gray-500 uppercase">{invoiceForm.no_factura ? 'Total Paid' : 'Subtotal / Total'}</label>
                     <input required type="number" step="0.01" className="p-2 w-full border rounded text-black font-bold" value={invoiceForm.total_amount} onChange={e => setInvoiceForm({...invoiceForm, total_amount: e.target.value})} />
                   </div>
                   <div className="w-1/2">
-                    <label className="flex justify-between text-xs font-bold text-gray-500 uppercase"><span>IVA Paid</span><button type="button" tabIndex={-1} onClick={() => setInvoiceForm({...invoiceForm, iva_amount: calculateIva(invoiceForm.total_amount)})} className="text-blue-600 hover:underline">Auto 16%</button></label>
-                    <input required type="number" step="0.01" className="p-2 w-full border rounded text-black text-red-600" value={invoiceForm.iva_amount} onChange={e => setInvoiceForm({...invoiceForm, iva_amount: e.target.value})} />
+                    <label className="flex justify-between text-xs font-bold text-gray-500 uppercase">
+                      <span>IVA Paid</span>
+                      {!invoiceForm.no_factura && <button type="button" tabIndex={-1} onClick={() => setInvoiceForm({...invoiceForm, iva_amount: calculateIva(invoiceForm.total_amount)})} className="text-blue-600 hover:underline">Auto 16%</button>}
+                    </label>
+                    <input required type="number" step="0.01" disabled={invoiceForm.no_factura} className="p-2 w-full border rounded text-black text-red-600 disabled:bg-gray-200 disabled:text-gray-500" value={invoiceForm.iva_amount} onChange={e => setInvoiceForm({...invoiceForm, iva_amount: e.target.value})} />
                   </div>
                 </div>
-                <textarea placeholder="Notes" className="p-2 border rounded text-black h-20" value={invoiceForm.notes} onChange={e => setInvoiceForm({...invoiceForm, notes: e.target.value})} />
+                <textarea placeholder="Notes / Items Bought" className="p-2 border rounded text-black h-20" value={invoiceForm.notes} onChange={e => setInvoiceForm({...invoiceForm, notes: e.target.value})} />
                 <input type="file" onChange={(e: any) => setInvoiceFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
-                <div className="flex justify-end gap-2 mt-4"><button type="button" onClick={() => setIsAddingInvoice(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button><button type="submit" disabled={isUploadingInvoice} className="px-4 py-2 bg-green-600 text-white rounded font-bold">Save Invoice</button></div>
+                <div className="flex justify-end gap-2 mt-4"><button type="button" onClick={() => setIsAddingInvoice(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button><button type="submit" disabled={isUploadingInvoice} className="px-4 py-2 bg-green-600 text-white rounded font-bold">Save Purchase</button></div>
               </form>
             </div>
           </div>
@@ -515,29 +542,42 @@ export default function ERPPortal() {
         {editingInvoice && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-blue-500">
-              <h2 className="text-2xl font-bold mb-4 text-gray-800">Edit Invoice</h2>
+              <h2 className="text-2xl font-bold mb-4 text-gray-800">Edit Purchase</h2>
               <form onSubmit={handleUpdateInvoice} className="flex flex-col gap-4">
+
+                {/* No Factura Toggle */}
+                <label className="flex items-center gap-2 mb-2 p-2 bg-gray-50 border rounded cursor-pointer hover:bg-gray-100">
+                  <input type="checkbox" className="w-4 h-4 text-blue-600" checked={editInvoiceForm.no_factura} onChange={e => {
+                    const isChecked = e.target.checked;
+                    setEditInvoiceForm({...editInvoiceForm, no_factura: isChecked, invoice_number: isChecked ? 'Sin Factura' : '', iva_amount: isChecked ? '0' : ''});
+                  }} />
+                  <span className="text-sm font-bold text-gray-700">Non-Invoice Purchase (Sin Factura)</span>
+                </label>
+
                 <select required className="w-full p-2 border rounded text-black" value={editInvoiceForm.provider_id} onChange={e => setEditInvoiceForm({...editInvoiceForm, provider_id: e.target.value})}>
                   <option value="">Select a provider...</option>
                   {providers.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
                 <div className="flex gap-4">
-                  <input type="text" placeholder="Invoice #" className="p-2 w-1/2 border rounded text-black" value={editInvoiceForm.invoice_number} onChange={e => setEditInvoiceForm({...editInvoiceForm, invoice_number: e.target.value})} />
+                  <input type="text" placeholder="Invoice / Ticket #" disabled={editInvoiceForm.no_factura} className="p-2 w-1/2 border rounded text-black disabled:bg-gray-200 disabled:text-gray-500" value={editInvoiceForm.invoice_number} onChange={e => setEditInvoiceForm({...editInvoiceForm, invoice_number: e.target.value})} />
                   <input required type="date" className="p-2 w-1/2 border rounded text-black" value={editInvoiceForm.invoice_date} onChange={e => setEditInvoiceForm({...editInvoiceForm, invoice_date: e.target.value})} />
                 </div>
                 <div className="flex gap-4 items-end">
                   <div className="w-1/2">
-                    <label className="block text-xs font-bold text-gray-500 uppercase">Subtotal / Total</label>
+                    <label className="block text-xs font-bold text-gray-500 uppercase">{editInvoiceForm.no_factura ? 'Total Paid' : 'Subtotal / Total'}</label>
                     <input required type="number" step="0.01" className="p-2 w-full border rounded text-black font-bold" value={editInvoiceForm.total_amount} onChange={e => setEditInvoiceForm({...editInvoiceForm, total_amount: e.target.value})} />
                   </div>
                   <div className="w-1/2">
-                    <label className="flex justify-between text-xs font-bold text-gray-500 uppercase"><span>IVA Paid</span><button type="button" tabIndex={-1} onClick={() => setEditInvoiceForm({...editInvoiceForm, iva_amount: calculateIva(editInvoiceForm.total_amount)})} className="text-blue-600 hover:underline">Auto 16%</button></label>
-                    <input required type="number" step="0.01" className="p-2 w-full border rounded text-black text-red-600" value={editInvoiceForm.iva_amount} onChange={e => setEditInvoiceForm({...editInvoiceForm, iva_amount: e.target.value})} />
+                    <label className="flex justify-between text-xs font-bold text-gray-500 uppercase">
+                      <span>IVA Paid</span>
+                      {!editInvoiceForm.no_factura && <button type="button" tabIndex={-1} onClick={() => setEditInvoiceForm({...editInvoiceForm, iva_amount: calculateIva(editInvoiceForm.total_amount)})} className="text-blue-600 hover:underline">Auto 16%</button>}
+                    </label>
+                    <input required type="number" step="0.01" disabled={editInvoiceForm.no_factura} className="p-2 w-full border rounded text-black text-red-600 disabled:bg-gray-200 disabled:text-gray-500" value={editInvoiceForm.iva_amount} onChange={e => setEditInvoiceForm({...editInvoiceForm, iva_amount: e.target.value})} />
                   </div>
                 </div>
-                <textarea placeholder="Notes" className="p-2 border rounded text-black h-20" value={editInvoiceForm.notes} onChange={e => setEditInvoiceForm({...editInvoiceForm, notes: e.target.value})} />
+                <textarea placeholder="Notes / Items Bought" className="p-2 border rounded text-black h-20" value={editInvoiceForm.notes} onChange={e => setEditInvoiceForm({...editInvoiceForm, notes: e.target.value})} />
                 
-                <div className="flex justify-end gap-2 mt-4"><button type="button" onClick={() => setEditingInvoice(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-700">Update Invoice</button></div>
+                <div className="flex justify-end gap-2 mt-4"><button type="button" onClick={() => setEditingInvoice(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-700">Update Purchase</button></div>
               </form>
             </div>
           </div>
