@@ -53,6 +53,9 @@ export default function ERPPortal() {
   const [satPaymentForm, setSatPaymentForm] = useState({ payment_date: '', amount: '', notes: '' });
   const [satReceiptFile, setSatReceiptFile] = useState<any>(null);
   const [isUploadingSat, setIsUploadingSat] = useState(false);
+  
+  const [editingSatPayment, setEditingSatPayment] = useState<any>(null);
+  const [editSatPaymentForm, setEditSatPaymentForm] = useState<any>({ payment_date: '', amount: '', notes: '' });
 
   useEffect(() => {
     fetchInventory();
@@ -387,14 +390,13 @@ export default function ERPPortal() {
     let receiptUrl = null;
     
     if (satReceiptFile) {
-      // The sanitizer prevents Supabase from choking on files like "Acuse Declaración.pdf"
       const fileName = `sat-${Date.now()}-${sanitizeFileName(satReceiptFile.name)}`;
       const { error: uploadError } = await supabase.storage.from('invoices').upload(fileName, satReceiptFile);
       
       if (uploadError) {
         alert(`Upload Failed: ${uploadError.message}. The payment was not saved. Check the file format.`);
         setIsUploadingSat(false);
-        return; // Stop the save if the file fails
+        return; 
       }
       receiptUrl = supabase.storage.from('invoices').getPublicUrl(fileName).data.publicUrl;
     }
@@ -409,6 +411,48 @@ export default function ERPPortal() {
     if (!error) {
       setIsAddingSatPayment(false);
       setSatPaymentForm({ payment_date: '', amount: '', notes: '' });
+      setSatReceiptFile(null);
+      fetchSatPayments();
+    } else {
+      alert(`Database Error: ${error.message}`);
+    }
+    setIsUploadingSat(false);
+  }
+
+  function openEditSatPaymentModal(payment: any) {
+    setEditingSatPayment(payment);
+    setEditSatPaymentForm({
+      payment_date: payment.payment_date || '',
+      amount: payment.amount || '',
+      notes: payment.notes || ''
+    });
+  }
+
+  async function handleUpdateSatPayment(e: any) {
+    e.preventDefault();
+    setIsUploadingSat(true);
+    let receiptUrl = editingSatPayment.receipt_url;
+
+    if (satReceiptFile) {
+      const fileName = `sat-${Date.now()}-${sanitizeFileName(satReceiptFile.name)}`;
+      const { error: uploadError } = await supabase.storage.from('invoices').upload(fileName, satReceiptFile);
+      if (uploadError) {
+        alert(`Upload Failed: ${uploadError.message}.`);
+        setIsUploadingSat(false);
+        return;
+      }
+      receiptUrl = supabase.storage.from('invoices').getPublicUrl(fileName).data.publicUrl;
+    }
+
+    const { error } = await supabase.from('iva_payments').update({
+      payment_date: editSatPaymentForm.payment_date,
+      amount: parseFloat(editSatPaymentForm.amount) || 0,
+      notes: editSatPaymentForm.notes,
+      receipt_url: receiptUrl
+    }).eq('id', editingSatPayment.id);
+    
+    if (!error) {
+      setEditingSatPayment(null);
       setSatReceiptFile(null);
       fetchSatPayments();
     } else {
@@ -591,17 +635,20 @@ export default function ERPPortal() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-100 text-gray-700">
-                    <th className="p-3 border-b">Payment Date</th><th className="p-3 border-b">Amount Paid to SAT</th><th className="p-3 border-b">Notes / Month Declared</th><th className="p-3 border-b">Acuse / Receipt</th>
+                    <th className="p-3 border-b">Payment Date</th><th className="p-3 border-b">Amount Paid to SAT</th><th className="p-3 border-b">Notes / Month Declared</th><th className="p-3 border-b">Acuse / Receipt</th><th className="p-3 border-b">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {satPayments.length === 0 ? <tr><td colSpan={4} className="p-4 text-center text-gray-500">No SAT payments logged yet.</td></tr> : (
+                  {satPayments.length === 0 ? <tr><td colSpan={5} className="p-4 text-center text-gray-500">No SAT payments logged yet.</td></tr> : (
                     satPayments.map((payment: any) => (
                       <tr key={payment.id} className="hover:bg-gray-50 border-b text-gray-800">
                         <td className="p-3">{payment.payment_date}</td>
                         <td className="p-3 font-bold text-green-600">{formatMXN(payment.amount)}</td>
                         <td className="p-3 text-sm">{payment.notes}</td>
                         <td className="p-3">{payment.receipt_url ? <a href={payment.receipt_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-bold">View</a> : <span className="text-gray-400 text-sm">No file</span>}</td>
+                        <td className="p-3">
+                          <button onClick={() => openEditSatPaymentModal(payment)} className="text-red-600 hover:text-red-800 text-sm font-bold bg-red-50 px-2 py-1 rounded border border-red-200">✏️ Edit</button>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -736,6 +783,35 @@ export default function ERPPortal() {
                 <div className="flex justify-end gap-2 mt-4">
                   <button type="button" onClick={() => setIsAddingSatPayment(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
                   <button type="submit" disabled={isUploadingSat} className="px-4 py-2 bg-red-600 text-white rounded font-bold hover:bg-red-700">Save Payment</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* --- EDIT SAT PAYMENT MODAL --- */}
+        {editingSatPayment && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-red-500">
+              <h2 className="text-2xl font-bold mb-4 text-gray-800">Edit SAT Payment</h2>
+              <form onSubmit={handleUpdateSatPayment} className="flex flex-col gap-4">
+                <div>
+                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Payment Date</label>
+                   <input required type="date" className="p-2 w-full border rounded text-black" value={editSatPaymentForm.payment_date} onChange={e => setEditSatPaymentForm({...editSatPaymentForm, payment_date: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Amount Paid to SAT</label>
+                  <input required type="number" step="0.01" className="p-2 w-full border rounded text-black font-bold text-red-600" value={editSatPaymentForm.amount} onChange={e => setEditSatPaymentForm({...editSatPaymentForm, amount: e.target.value})} />
+                </div>
+                <textarea placeholder="Notes (e.g., Declaration for March 2026)" className="p-2 border rounded text-black h-20" value={editSatPaymentForm.notes} onChange={e => setEditSatPaymentForm({...editSatPaymentForm, notes: e.target.value})} />
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Upload/Replace Acuse</label>
+                  <input type="file" accept=".pdf,image/*" onChange={(e: any) => setSatReceiptFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-red-50 file:text-red-700" />
+                  {editingSatPayment.receipt_url && <p className="text-xs text-blue-600 mt-1">A receipt is currently attached.</p>}
+                </div>
+                <div className="flex justify-end gap-2 mt-4">
+                  <button type="button" onClick={() => setEditingSatPayment(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
+                  <button type="submit" disabled={isUploadingSat} className="px-4 py-2 bg-red-600 text-white rounded font-bold hover:bg-red-700">Update Payment</button>
                 </div>
               </form>
             </div>
