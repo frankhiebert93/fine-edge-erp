@@ -361,7 +361,7 @@ export default function ERPPortal() {
             <p className="text-3xl font-bold text-orange-600">{formatMXN(currentInventoryValue)}</p>
           </div>
           <div className="flex-1 min-w-[200px] bg-white p-6 rounded-lg shadow border-l-4 border-gray-400">
-            <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide mb-1">Total Parts Purchased</h3>
+            <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide mb-1">Total Expenses</h3>
             <p className="text-3xl font-bold text-gray-600">{formatMXN(totalInvoicesValue)}</p>
           </div>
           <div className={`flex-1 min-w-[200px] bg-white p-6 rounded-lg shadow border-l-4 ${netIva > 0 ? 'border-red-500' : 'border-teal-500'}`}>
