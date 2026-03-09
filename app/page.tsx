@@ -1096,7 +1096,7 @@ export default function ERPPortal() {
                   </ul>
                 </div>
                 <div className="mt-auto border-t-2 border-gray-200 pt-4">
-                  <p className="font-bold text-gray-800">Contact Us:</p>
+                  <p className="font-bold text-gray-800">Contact Us:625-119-1400</p>
                   <p className="text-gray-600">fineedgemachines@gmail.com</p>
                   <p className="text-gray-600 italic mt-2">Pricing and freight shipping options available upon request.</p>
                 </div>
