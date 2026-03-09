@@ -14,7 +14,7 @@ export default function ERPPortal() {
   const [selectedMachine, setSelectedMachine] = useState<any>(null);
   const [specSheetMachine, setSpecSheetMachine] = useState<any>(null); 
 
-  // Add & Edit Forms
+  // Add & Edit Forms (Machinery)
   const [formData, setFormData] = useState({ machine_name: '', serial_number: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '' });
   const [editingMachine, setEditingMachine] = useState<any>(null);
   const [editFormData, setEditFormData] = useState<any>({ machine_name: '', serial_number: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '' });
@@ -36,6 +36,10 @@ export default function ERPPortal() {
   const [invoiceForm, setInvoiceForm] = useState({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', notes: '' });
   const [invoiceFile, setInvoiceFile] = useState<any>(null);
   const [isUploadingInvoice, setIsUploadingInvoice] = useState(false);
+
+  // Edit Forms (Invoices)
+  const [editingInvoice, setEditingInvoice] = useState<any>(null);
+  const [editInvoiceForm, setEditInvoiceForm] = useState<any>({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', notes: '' });
 
   useEffect(() => {
     fetchInventory();
@@ -210,6 +214,36 @@ export default function ERPPortal() {
     setIsUploadingInvoice(false);
   }
 
+  // --- EDIT INVOICE LOGIC ---
+  function openEditInvoiceModal(invoice: any) {
+    setEditingInvoice(invoice);
+    setEditInvoiceForm({
+      provider_id: invoice.provider_id || '',
+      invoice_number: invoice.invoice_number || '',
+      total_amount: invoice.total_amount || '',
+      iva_amount: invoice.iva_amount || '',
+      invoice_date: invoice.invoice_date || '',
+      notes: invoice.notes || ''
+    });
+  }
+
+  async function handleUpdateInvoice(e: any) {
+    e.preventDefault();
+    const { error } = await supabase.from('parts_invoices').update({
+      provider_id: editInvoiceForm.provider_id,
+      invoice_number: editInvoiceForm.invoice_number,
+      total_amount: parseFloat(editInvoiceForm.total_amount) || 0,
+      iva_amount: parseFloat(editInvoiceForm.iva_amount) || 0,
+      invoice_date: editInvoiceForm.invoice_date,
+      notes: editInvoiceForm.notes
+    }).eq('id', editingInvoice.id);
+    
+    if (!error) {
+      setEditingInvoice(null);
+      fetchProvidersAndInvoices();
+    }
+  }
+
   const calculateIva = (amount: any) => (parseFloat(amount) * 0.16).toFixed(2);
 
   return (
@@ -327,17 +361,20 @@ export default function ERPPortal() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-100 text-gray-700">
-                    <th className="p-3 border-b">Date</th><th className="p-3 border-b">Provider</th><th className="p-3 border-b">Inv #</th><th className="p-3 border-b">Total Amount</th><th className="p-3 border-b">IVA Paid</th><th className="p-3 border-b">Receipt</th>
+                    <th className="p-3 border-b">Date</th><th className="p-3 border-b">Provider</th><th className="p-3 border-b">Inv #</th><th className="p-3 border-b">Total Amount</th><th className="p-3 border-b">IVA Paid</th><th className="p-3 border-b">Receipt</th><th className="p-3 border-b">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {invoices.length === 0 ? <tr><td colSpan={6} className="p-4 text-center text-gray-500">No invoices logged yet.</td></tr> : (
+                  {invoices.length === 0 ? <tr><td colSpan={7} className="p-4 text-center text-gray-500">No invoices logged yet.</td></tr> : (
                     invoices.map((inv: any) => (
                       <tr key={inv.id} className="hover:bg-gray-50 border-b text-gray-800">
                         <td className="p-3">{inv.invoice_date}</td><td className="p-3 font-semibold">{inv.providers?.name || 'Unknown'}</td><td className="p-3">{inv.invoice_number || 'N/A'}</td>
                         <td className="p-3 font-bold text-gray-800">{formatMXN(inv.total_amount)}</td>
                         <td className="p-3 text-red-600">{formatMXN(inv.iva_amount)}</td>
                         <td className="p-3">{inv.file_url ? <a href={inv.file_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-bold">View</a> : <span className="text-gray-400 text-sm">No file</span>}</td>
+                        <td className="p-3">
+                          <button onClick={() => openEditInvoiceModal(inv)} className="text-blue-600 hover:text-blue-800 text-sm font-bold bg-blue-50 px-2 py-1 rounded border border-blue-200">✏️ Edit</button>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -374,6 +411,38 @@ export default function ERPPortal() {
                 <textarea placeholder="Notes" className="p-2 border rounded text-black h-20" value={invoiceForm.notes} onChange={e => setInvoiceForm({...invoiceForm, notes: e.target.value})} />
                 <input type="file" onChange={(e: any) => setInvoiceFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
                 <div className="flex justify-end gap-2 mt-4"><button type="button" onClick={() => setIsAddingInvoice(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button><button type="submit" disabled={isUploadingInvoice} className="px-4 py-2 bg-green-600 text-white rounded font-bold">Save Invoice</button></div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* --- EDIT INVOICE MODAL --- */}
+        {editingInvoice && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-blue-500">
+              <h2 className="text-2xl font-bold mb-4 text-gray-800">Edit Invoice</h2>
+              <form onSubmit={handleUpdateInvoice} className="flex flex-col gap-4">
+                <select required className="w-full p-2 border rounded text-black" value={editInvoiceForm.provider_id} onChange={e => setEditInvoiceForm({...editInvoiceForm, provider_id: e.target.value})}>
+                  <option value="">Select a provider...</option>
+                  {providers.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <div className="flex gap-4">
+                  <input type="text" placeholder="Invoice #" className="p-2 w-1/2 border rounded text-black" value={editInvoiceForm.invoice_number} onChange={e => setEditInvoiceForm({...editInvoiceForm, invoice_number: e.target.value})} />
+                  <input required type="date" className="p-2 w-1/2 border rounded text-black" value={editInvoiceForm.invoice_date} onChange={e => setEditInvoiceForm({...editInvoiceForm, invoice_date: e.target.value})} />
+                </div>
+                <div className="flex gap-4 items-end">
+                  <div className="w-1/2">
+                    <label className="block text-xs font-bold text-gray-500 uppercase">Subtotal / Total</label>
+                    <input required type="number" step="0.01" className="p-2 w-full border rounded text-black font-bold" value={editInvoiceForm.total_amount} onChange={e => setEditInvoiceForm({...editInvoiceForm, total_amount: e.target.value})} />
+                  </div>
+                  <div className="w-1/2">
+                    <label className="flex justify-between text-xs font-bold text-gray-500 uppercase"><span>IVA Paid</span><button type="button" tabIndex={-1} onClick={() => setEditInvoiceForm({...editInvoiceForm, iva_amount: calculateIva(editInvoiceForm.total_amount)})} className="text-blue-600 hover:underline">Auto 16%</button></label>
+                    <input required type="number" step="0.01" className="p-2 w-full border rounded text-black text-red-600" value={editInvoiceForm.iva_amount} onChange={e => setEditInvoiceForm({...editInvoiceForm, iva_amount: e.target.value})} />
+                  </div>
+                </div>
+                <textarea placeholder="Notes" className="p-2 border rounded text-black h-20" value={editInvoiceForm.notes} onChange={e => setEditInvoiceForm({...editInvoiceForm, notes: e.target.value})} />
+                
+                <div className="flex justify-end gap-2 mt-4"><button type="button" onClick={() => setEditingInvoice(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-700">Update Invoice</button></div>
               </form>
             </div>
           </div>
