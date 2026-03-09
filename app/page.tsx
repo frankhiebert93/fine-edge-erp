@@ -8,6 +8,10 @@ export default function ERPPortal() {
   const [activeTab, setActiveTab] = useState('kanban'); 
   const [searchTerm, setSearchTerm] = useState('');
 
+  // --- HELPER: FILE SANITIZER ---
+  // Strips spaces and accents from Mexican PDFs (e.g. "Declaración.pdf" -> "Declaracin.pdf")
+  const sanitizeFileName = (name: string) => name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+
   // --- STATE: MACHINERY ---
   const [machines, setMachines] = useState<any[]>([]);  
   const [isAdding, setIsAdding] = useState(false);
@@ -175,9 +179,13 @@ export default function ERPPortal() {
     let saleInvoiceUrl = sellingMachine.sale_invoice_url;
 
     if (saleInvoiceFile) {
-      const fileName = `sale-${Date.now()}-${saleInvoiceFile.name}`;
-      const { error } = await supabase.storage.from('machine-docs').upload(fileName, saleInvoiceFile);
-      if (!error) saleInvoiceUrl = supabase.storage.from('machine-docs').getPublicUrl(fileName).data.publicUrl;
+      const fileName = `sale-${Date.now()}-${sanitizeFileName(saleInvoiceFile.name)}`;
+      const { error: uploadError } = await supabase.storage.from('machine-docs').upload(fileName, saleInvoiceFile);
+      if (uploadError) {
+        alert("Invoice upload failed: " + uploadError.message);
+        setIsUploading(false); return;
+      }
+      saleInvoiceUrl = supabase.storage.from('machine-docs').getPublicUrl(fileName).data.publicUrl;
     }
 
     const { error } = await supabase.from('inventory').update({ 
@@ -203,15 +211,23 @@ export default function ERPPortal() {
     let pedimentoUrl = null;
 
     if (imageFile) {
-      const fileName = `img-${Date.now()}-${imageFile.name}`;
-      const { error } = await supabase.storage.from('machine-images').upload(fileName, imageFile);
-      if (!error) imageUrl = supabase.storage.from('machine-images').getPublicUrl(fileName).data.publicUrl;
+      const fileName = `img-${Date.now()}-${sanitizeFileName(imageFile.name)}`;
+      const { error: uploadError } = await supabase.storage.from('machine-images').upload(fileName, imageFile);
+      if (uploadError) {
+        alert("Image upload failed: " + uploadError.message);
+        setIsUploading(false); return;
+      }
+      imageUrl = supabase.storage.from('machine-images').getPublicUrl(fileName).data.publicUrl;
     }
     
     if (pedimentoFile) {
-      const fileName = `pedimento-${Date.now()}-${pedimentoFile.name}`;
-      const { error } = await supabase.storage.from('machine-docs').upload(fileName, pedimentoFile);
-      if (!error) pedimentoUrl = supabase.storage.from('machine-docs').getPublicUrl(fileName).data.publicUrl;
+      const fileName = `pedimento-${Date.now()}-${sanitizeFileName(pedimentoFile.name)}`;
+      const { error: uploadError } = await supabase.storage.from('machine-docs').upload(fileName, pedimentoFile);
+      if (uploadError) {
+        alert("Pedimento upload failed: " + uploadError.message);
+        setIsUploading(false); return;
+      }
+      pedimentoUrl = supabase.storage.from('machine-docs').getPublicUrl(fileName).data.publicUrl;
     }
 
     const { error } = await supabase.from('inventory').insert([{
@@ -227,6 +243,8 @@ export default function ERPPortal() {
       setImageFile(null); 
       setPedimentoFile(null);
       fetchInventory(); 
+    } else {
+      alert("Database error: " + error.message);
     }
     setIsUploading(false);
   }
@@ -249,9 +267,13 @@ export default function ERPPortal() {
     let pedimentoUrl = editingMachine.pedimento_url;
 
     if (pedimentoFile) {
-      const fileName = `pedimento-${Date.now()}-${pedimentoFile.name}`;
-      const { error } = await supabase.storage.from('machine-docs').upload(fileName, pedimentoFile);
-      if (!error) pedimentoUrl = supabase.storage.from('machine-docs').getPublicUrl(fileName).data.publicUrl;
+      const fileName = `pedimento-${Date.now()}-${sanitizeFileName(pedimentoFile.name)}`;
+      const { error: uploadError } = await supabase.storage.from('machine-docs').upload(fileName, pedimentoFile);
+      if (uploadError) {
+        alert("Pedimento upload failed: " + uploadError.message);
+        setIsUploading(false); return;
+      }
+      pedimentoUrl = supabase.storage.from('machine-docs').getPublicUrl(fileName).data.publicUrl;
     }
 
     const { error } = await supabase.from('inventory').update({
@@ -303,9 +325,13 @@ export default function ERPPortal() {
     setIsUploadingInvoice(true);
     let fileUrl = null;
     if (invoiceFile) {
-      const fileName = `${Date.now()}-${invoiceFile.name}`;
-      const { error } = await supabase.storage.from('invoices').upload(fileName, invoiceFile);
-      if (!error) fileUrl = supabase.storage.from('invoices').getPublicUrl(fileName).data.publicUrl;
+      const fileName = `inv-${Date.now()}-${sanitizeFileName(invoiceFile.name)}`;
+      const { error: uploadError } = await supabase.storage.from('invoices').upload(fileName, invoiceFile);
+      if (uploadError) {
+        alert("File upload failed: " + uploadError.message);
+        setIsUploadingInvoice(false); return;
+      }
+      fileUrl = supabase.storage.from('invoices').getPublicUrl(fileName).data.publicUrl;
     }
     await supabase.from('parts_invoices').insert([{
       provider_id: invoiceForm.provider_id, 
@@ -359,11 +385,20 @@ export default function ERPPortal() {
     e.preventDefault();
     setIsUploadingSat(true);
     let receiptUrl = null;
+    
     if (satReceiptFile) {
-      const fileName = `sat-${Date.now()}-${satReceiptFile.name}`;
-      const { error } = await supabase.storage.from('invoices').upload(fileName, satReceiptFile);
-      if (!error) receiptUrl = supabase.storage.from('invoices').getPublicUrl(fileName).data.publicUrl;
+      // The sanitizer prevents Supabase from choking on files like "Acuse Declaración.pdf"
+      const fileName = `sat-${Date.now()}-${sanitizeFileName(satReceiptFile.name)}`;
+      const { error: uploadError } = await supabase.storage.from('invoices').upload(fileName, satReceiptFile);
+      
+      if (uploadError) {
+        alert(`Upload Failed: ${uploadError.message}. The payment was not saved. Check the file format.`);
+        setIsUploadingSat(false);
+        return; // Stop the save if the file fails
+      }
+      receiptUrl = supabase.storage.from('invoices').getPublicUrl(fileName).data.publicUrl;
     }
+
     const { error } = await supabase.from('iva_payments').insert([{
       payment_date: satPaymentForm.payment_date || new Date().toISOString().split('T')[0],
       amount: parseFloat(satPaymentForm.amount) || 0,
@@ -376,6 +411,8 @@ export default function ERPPortal() {
       setSatPaymentForm({ payment_date: '', amount: '', notes: '' });
       setSatReceiptFile(null);
       fetchSatPayments();
+    } else {
+      alert(`Database Error: ${error.message}`);
     }
     setIsUploadingSat(false);
   }
