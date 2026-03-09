@@ -127,6 +127,13 @@ export default function ERPPortal() {
   const totalIvaPaidToSat = satPayments.reduce((sum: any, p: any) => sum + Number(p.amount), 0);
   const currentIvaOwed = grossIvaBalance - totalIvaPaidToSat;
 
+  // CASH FLOW MATH
+  const totalCashIn = soldMachines.reduce((sum: any, m: any) => sum + Number(m.sale_price) + Number(m.sale_iva || 0), 0);
+  const totalMachineSpend = machines.reduce((sum: any, m: any) => sum + Number(m.purchase_price) + Number(m.purchase_iva || 0) + Number(m.shipping_in_cost) + Number(m.import_fee || 0), 0);
+  const unlinkedRepairsCost = machines.reduce((sum: any, m: any) => sum + (m.repair_logs?.filter((log: any) => !log.invoice_id).reduce((s: any, l: any) => s + Number(l.part_cost), 0) || 0), 0);
+  const totalCashOut = totalMachineSpend + totalInvoicesValue + totalIvaPaidToSat + unlinkedRepairsCost;
+  const netCashFlow = totalCashIn - totalCashOut;
+
   const filteredMachines = machines.filter((machine: any) => 
     machine.machine_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     machine.serial_number.toLowerCase().includes(searchTerm.toLowerCase())
@@ -558,6 +565,7 @@ export default function ERPPortal() {
                    value={exchangeRate}
                    onChange={(e) => setExchangeRate(e.target.value)}
                    className="w-16 p-1 text-xs border rounded text-black font-bold focus:outline-none focus:ring-1 focus:ring-green-500 bg-gray-50"
+                   disabled={!isAdmin}
                  />
                </div>
             </div>
@@ -567,6 +575,13 @@ export default function ERPPortal() {
                 USD {parseFloat(exchangeRate) > 0 ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(netProfit / parseFloat(exchangeRate)) : '$0.00'}
               </span>
             </div>
+          </div>
+
+          {/* NEW NET CASH FLOW WIDGET */}
+          <div className={`flex-1 min-w-[200px] bg-white p-6 rounded-lg shadow border-l-4 ${netCashFlow >= 0 ? 'border-purple-500' : 'border-red-500'}`}>
+            <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide mb-1">Net Cash Flow</h3>
+            <p className={`text-3xl font-bold ${netCashFlow >= 0 ? 'text-purple-600' : 'text-red-600'}`}>{formatMXN(netCashFlow)}</p>
+            <p className="text-xs text-gray-400 mt-1">Total in vs. Total out</p>
           </div>
         </div>
 
@@ -1096,7 +1111,7 @@ export default function ERPPortal() {
                   </ul>
                 </div>
                 <div className="mt-auto border-t-2 border-gray-200 pt-4">
-                  <p className="font-bold text-gray-800">Contact Us:625-119-1400</p>
+                  <p className="font-bold text-gray-800">Contact Us:</p>
                   <p className="text-gray-600">fineedgemachines@gmail.com</p>
                   <p className="text-gray-600 italic mt-2">Pricing and freight shipping options available upon request.</p>
                 </div>
