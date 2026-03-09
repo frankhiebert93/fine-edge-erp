@@ -21,11 +21,13 @@ export default function ERPPortal() {
   
   const [repairForm, setRepairForm] = useState({ item_description: '', part_cost: '', labor_hours: '', invoice_id: '' });
   const [imageFile, setImageFile] = useState<any>(null);
+  const [pedimentoFile, setPedimentoFile] = useState<any>(null); // NEW: Pedimento upload
   const [isUploading, setIsUploading] = useState(false);
 
   // --- STATE: SELLING A MACHINE ---
   const [sellingMachine, setSellingMachine] = useState<any>(null);
   const [sellForm, setSellForm] = useState({ sale_price: '', sale_iva: '' });
+  const [saleInvoiceFile, setSaleInvoiceFile] = useState<any>(null); // NEW: Sale Invoice upload
 
   // --- STATE: INVOICES & PROVIDERS ---
   const [providers, setProviders] = useState<any[]>([]);
@@ -75,13 +77,8 @@ export default function ERPPortal() {
   
   const currentInventoryValue = inShopMachines.reduce((total: any, m: any) => total + calculateTotalCost(m), 0);
   const totalInvoicesValue = invoices.reduce((total: any, inv: any) => total + Number(inv.total_amount), 0);
+  const netProfit = soldMachines.reduce((total: any, m: any) => total + (Number(m.sale_price) - calculateTotalCost(m)), 0);
 
-  // Calculate Realized Profit (Sale Price subtotal - Total Invested Cost)
-  const netProfit = soldMachines.reduce((total: any, m: any) => {
-    return total + (Number(m.sale_price) - calculateTotalCost(m));
-  }, 0);
-
-  // IVA Math
   const totalIvaPaid = machines.reduce((sum: any, m: any) => sum + Number(m.purchase_iva || 0), 0) + 
                        invoices.reduce((sum: any, inv: any) => sum + Number(inv.iva_amount || 0), 0);
   const totalIvaCollected = soldMachines.reduce((sum: any, m: any) => sum + Number(m.sale_iva || 0), 0);
@@ -110,31 +107,61 @@ export default function ERPPortal() {
 
   async function handleSellMachine(e: any) {
     e.preventDefault();
+    setIsUploading(true);
+    let saleInvoiceUrl = sellingMachine.sale_invoice_url;
+
+    if (saleInvoiceFile) {
+      const fileName = `sale-${Date.now()}-${saleInvoiceFile.name}`;
+      const { error } = await supabase.storage.from('machine-docs').upload(fileName, saleInvoiceFile);
+      if (!error) saleInvoiceUrl = supabase.storage.from('machine-docs').getPublicUrl(fileName).data.publicUrl;
+    }
+
     const { error } = await supabase.from('inventory').update({ 
-      status: 'Sold', sale_price: parseFloat(sellForm.sale_price) || 0, sale_iva: parseFloat(sellForm.sale_iva) || 0
+      status: 'Sold', 
+      sale_price: parseFloat(sellForm.sale_price) || 0, 
+      sale_iva: parseFloat(sellForm.sale_iva) || 0,
+      sale_invoice_url: saleInvoiceUrl
     }).eq('id', sellingMachine.id);
-    if (!error) { setSellingMachine(null); setSellForm({ sale_price: '', sale_iva: '' }); fetchInventory(); }
+
+    if (!error) { 
+      setSellingMachine(null); 
+      setSellForm({ sale_price: '', sale_iva: '' }); 
+      setSaleInvoiceFile(null);
+      fetchInventory(); 
+    }
+    setIsUploading(false);
   }
 
   async function handleAddMachine(e: any) {
     e.preventDefault();
     setIsUploading(true);
     let imageUrl = null;
+    let pedimentoUrl = null;
+
     if (imageFile) {
-      const fileName = `${Date.now()}-${imageFile.name}`;
+      const fileName = `img-${Date.now()}-${imageFile.name}`;
       const { error } = await supabase.storage.from('machine-images').upload(fileName, imageFile);
       if (!error) imageUrl = supabase.storage.from('machine-images').getPublicUrl(fileName).data.publicUrl;
     }
+    
+    if (pedimentoFile) {
+      const fileName = `pedimento-${Date.now()}-${pedimentoFile.name}`;
+      const { error } = await supabase.storage.from('machine-docs').upload(fileName, pedimentoFile);
+      if (!error) pedimentoUrl = supabase.storage.from('machine-docs').getPublicUrl(fileName).data.publicUrl;
+    }
+
     const { error } = await supabase.from('inventory').insert([{
       machine_name: formData.machine_name, serial_number: formData.serial_number,
       purchase_price: parseFloat(formData.purchase_price) || 0, purchase_iva: parseFloat(formData.purchase_iva) || 0, 
       shipping_in_cost: parseFloat(formData.shipping_in_cost) || 0, import_fee: parseFloat(formData.import_fee) || 0,
-      status: 'Intake', image_url: imageUrl
+      status: 'Intake', image_url: imageUrl, pedimento_url: pedimentoUrl
     }]);
+
     if (!error) { 
       setIsAdding(false); 
       setFormData({ machine_name: '', serial_number: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '' }); 
       setImageFile(null); 
+      setPedimentoFile(null);
       fetchInventory(); 
     }
     setIsUploading(false);
@@ -155,6 +182,15 @@ export default function ERPPortal() {
 
   async function handleUpdateMachine(e: any) {
     e.preventDefault();
+    setIsUploading(true);
+    let pedimentoUrl = editingMachine.pedimento_url;
+
+    if (pedimentoFile) {
+      const fileName = `pedimento-${Date.now()}-${pedimentoFile.name}`;
+      const { error } = await supabase.storage.from('machine-docs').upload(fileName, pedimentoFile);
+      if (!error) pedimentoUrl = supabase.storage.from('machine-docs').getPublicUrl(fileName).data.publicUrl;
+    }
+
     const { error } = await supabase.from('inventory').update({
       machine_name: editFormData.machine_name,
       serial_number: editFormData.serial_number,
@@ -162,12 +198,15 @@ export default function ERPPortal() {
       purchase_iva: parseFloat(editFormData.purchase_iva) || 0,
       shipping_in_cost: parseFloat(editFormData.shipping_in_cost) || 0,
       import_fee: parseFloat(editFormData.import_fee) || 0,
+      pedimento_url: pedimentoUrl
     }).eq('id', editingMachine.id);
     
     if (!error) {
       setEditingMachine(null);
+      setPedimentoFile(null);
       fetchInventory();
     }
+    setIsUploading(false);
   }
 
   async function handleAddRepair(e: any) {
@@ -214,7 +253,6 @@ export default function ERPPortal() {
     setIsUploadingInvoice(false);
   }
 
-  // --- EDIT INVOICE LOGIC ---
   function openEditInvoiceModal(invoice: any) {
     setEditingInvoice(invoice);
     setEditInvoiceForm({
@@ -273,12 +311,9 @@ export default function ERPPortal() {
             <p className={`text-3xl font-bold ${netIva > 0 ? 'text-red-600' : 'text-teal-600'}`}>{formatMXN(netIva)}</p>
             <p className="text-xs text-gray-400 mt-1">{netIva > 0 ? 'You owe SAT' : 'Balance in favor'}</p>
           </div>
-          {/* PROFIT WIDGET */}
           <div className={`flex-1 min-w-[200px] bg-white p-6 rounded-lg shadow border-l-4 ${netProfit >= 0 ? 'border-green-500' : 'border-red-500'}`}>
             <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide mb-1">Realized Profit/Loss</h3>
-            <p className={`text-3xl font-bold ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {formatMXN(netProfit)}
-            </p>
+            <p className={`text-3xl font-bold ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatMXN(netProfit)}</p>
             <p className="text-xs text-gray-400 mt-1">From sold machines</p>
           </div>
         </div>
@@ -325,9 +360,15 @@ export default function ERPPortal() {
                            </div>
                         )}
 
-                        <div className="flex justify-between items-center text-sm font-medium text-gray-700 mt-4 border-t pt-2">
+                        <div className="flex justify-between items-center text-sm font-medium text-gray-700 mt-4 border-t pt-2 border-b pb-2 mb-2">
                           <span>Total Invested:</span>
                           <span className="text-gray-800 font-bold">{formatMXN(calculateTotalCost(machine))}</span>
+                        </div>
+
+                        {/* Document Links */}
+                        <div className="flex gap-2 text-xs font-bold mt-2">
+                          {machine.pedimento_url && <a href={machine.pedimento_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline bg-blue-50 px-2 py-1 rounded" onClick={(e) => e.stopPropagation()}>📄 Pedimento</a>}
+                          {machine.sale_invoice_url && <a href={machine.sale_invoice_url} target="_blank" rel="noreferrer" className="text-green-600 hover:underline bg-green-50 px-2 py-1 rounded" onClick={(e) => e.stopPropagation()}>🧾 Sale Invoice</a>}
                         </div>
                         
                         <div className="flex gap-2 mt-4">
@@ -478,7 +519,11 @@ export default function ERPPortal() {
                   <label className="flex justify-between text-sm font-bold text-gray-700 mb-1"><span>IVA Collected</span><button type="button" tabIndex={-1} onClick={() => setSellForm({...sellForm, sale_iva: calculateIva(sellForm.sale_price)})} className="text-blue-600 hover:underline">Auto 16%</button></label>
                   <input required type="number" step="0.01" className="w-full p-3 border rounded text-black text-green-700 font-bold" value={sellForm.sale_iva} onChange={e => setSellForm({...sellForm, sale_iva: e.target.value})} />
                 </div>
-                <div className="flex justify-end gap-2 mt-4"><button type="button" onClick={() => { setSellingMachine(null); fetchInventory(); }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button><button type="submit" className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded font-bold shadow">Confirm Sale</button></div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Upload Sale Invoice (Optional)</label>
+                  <input type="file" onChange={(e: any) => setSaleInvoiceFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
+                </div>
+                <div className="flex justify-end gap-2 mt-4"><button type="button" onClick={() => { setSellingMachine(null); fetchInventory(); }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button><button type="submit" disabled={isUploading} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded font-bold shadow">Confirm Sale</button></div>
               </form>
             </div>
           </div>
@@ -490,7 +535,15 @@ export default function ERPPortal() {
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
                <h2 className="text-2xl font-bold mb-4 text-gray-800">Log New Machine</h2>
                <form onSubmit={handleAddMachine} className="flex flex-col gap-4">
-                  <input type="file" accept="image/*" onChange={(e: any) => setImageFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Machine Photo</label>
+                    <input type="file" accept="image/*" onChange={(e: any) => setImageFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Pedimento Document</label>
+                    <input type="file" accept=".pdf,image/*" onChange={(e: any) => setPedimentoFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
+                  </div>
+
                   <input required placeholder="Machine Name" className="p-2 border rounded text-black" value={formData.machine_name} onChange={e => setFormData({...formData, machine_name: e.target.value})} />
                   <input required placeholder="Serial Number" className="p-2 border rounded text-black" value={formData.serial_number} onChange={e => setFormData({...formData, serial_number: e.target.value})} />
                   
@@ -553,7 +606,13 @@ export default function ERPPortal() {
                      </div>
                   </div>
 
-                  <div className="flex justify-end gap-2 mt-4"><button type="button" onClick={() => setEditingMachine(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button><button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold">Update Details</button></div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Upload/Replace Pedimento</label>
+                    <input type="file" accept=".pdf,image/*" onChange={(e: any) => setPedimentoFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
+                    {editingMachine.pedimento_url && <p className="text-xs text-blue-600 mt-1">A pedimento is currently attached.</p>}
+                  </div>
+
+                  <div className="flex justify-end gap-2 mt-4"><button type="button" onClick={() => setEditingMachine(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button><button type="submit" disabled={isUploading} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold">Update Details</button></div>
                </form>
             </div>
           </div>
