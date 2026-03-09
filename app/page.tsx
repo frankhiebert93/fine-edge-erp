@@ -9,28 +9,29 @@ export default function ERPPortal() {
   const [searchTerm, setSearchTerm] = useState('');
 
   // --- STATE: MACHINERY ---
-const [machines, setMachines] = useState<any[]>([]);  const [isAdding, setIsAdding] = useState(false);
-  const [selectedMachine, setSelectedMachine] = useState(null);
-  const [specSheetMachine, setSpecSheetMachine] = useState(null); 
+  const [machines, setMachines] = useState<any[]>([]);  
+  const [isAdding, setIsAdding] = useState(false);
+  const [selectedMachine, setSelectedMachine] = useState<any>(null);
+  const [specSheetMachine, setSpecSheetMachine] = useState<any>(null); 
 
   // Added import_fee to the initial state
   const [formData, setFormData] = useState({ machine_name: '', serial_number: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '' });
   const [repairForm, setRepairForm] = useState({ item_description: '', part_cost: '', labor_hours: '', invoice_id: '' });
-  const [imageFile, setImageFile] = useState(null);
+  const [imageFile, setImageFile] = useState<any>(null);
   const [isUploading, setIsUploading] = useState(false);
 
   // --- STATE: SELLING A MACHINE ---
-  const [sellingMachine, setSellingMachine] = useState(null);
+  const [sellingMachine, setSellingMachine] = useState<any>(null);
   const [sellForm, setSellForm] = useState({ sale_price: '', sale_iva: '' });
 
   // --- STATE: INVOICES & PROVIDERS ---
-  const [providers, setProviders] = useState([]);
-  const [invoices, setInvoices] = useState([]);
+  const [providers, setProviders] = useState<any[]>([]);
+  const [invoices, setInvoices] = useState<any[]>([]);
   const [isAddingProvider, setIsAddingProvider] = useState(false);
   const [isAddingInvoice, setIsAddingInvoice] = useState(false);
   const [providerForm, setProviderForm] = useState({ name: '', contact_info: '', notes: '' });
   const [invoiceForm, setInvoiceForm] = useState({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', notes: '' });
-  const [invoiceFile, setInvoiceFile] = useState(null);
+  const [invoiceFile, setInvoiceFile] = useState<any>(null);
   const [isUploadingInvoice, setIsUploadingInvoice] = useState(false);
 
   useEffect(() => {
@@ -42,7 +43,7 @@ const [machines, setMachines] = useState<any[]>([]);  const [isAdding, setIsAddi
     const { data, error } = await supabase.from('inventory')
       .select('*, repair_logs(*, parts_invoices(invoice_number, file_url, providers(name)))')
       .order('date_acquired', { ascending: false });
-    if (!error) setMachines(data);
+    if (!error) setMachines(data || []);
   }
 
   async function fetchProvidersAndInvoices() {
@@ -53,54 +54,54 @@ const [machines, setMachines] = useState<any[]>([]);  const [isAdding, setIsAddi
   }
 
   // --- CALCULATIONS & METRICS ---
-  const calculateTotalCost = (machine) => {
+  const calculateTotalCost = (machine: any) => {
     return Number(machine.purchase_price) + 
            Number(machine.shipping_in_cost) + 
            Number(machine.import_fee || 0) + 
-           (machine.repair_logs?.reduce((sum, log) => sum + Number(log.part_cost), 0) || 0);
+           (machine.repair_logs?.reduce((sum: any, log: any) => sum + Number(log.part_cost), 0) || 0);
   };
-  const formatMXN = (amount) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
+  const formatMXN = (amount: any) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
 
   // Dashboard Math
-  const inShopMachines = machines.filter(m => m.status !== 'Sold');
-  const soldMachines = machines.filter(m => m.status === 'Sold');
+  const inShopMachines = machines.filter((m: any) => m.status !== 'Sold');
+  const soldMachines = machines.filter((m: any) => m.status === 'Sold');
   
-  const currentInventoryValue = inShopMachines.reduce((total, m) => total + calculateTotalCost(m), 0);
-  const totalInvoicesValue = invoices.reduce((total, inv) => total + Number(inv.total_amount), 0);
+  const currentInventoryValue = inShopMachines.reduce((total: any, m: any) => total + calculateTotalCost(m), 0);
+  const totalInvoicesValue = invoices.reduce((total: any, inv: any) => total + Number(inv.total_amount), 0);
 
   // Calculate Realized Profit (Sale Price subtotal - Total Invested Cost)
-  const netProfit = soldMachines.reduce((total, m) => {
+  const netProfit = soldMachines.reduce((total: any, m: any) => {
     return total + (Number(m.sale_price) - calculateTotalCost(m));
   }, 0);
 
   // IVA Math
-  const totalIvaPaid = machines.reduce((sum, m) => sum + Number(m.purchase_iva || 0), 0) + 
-                       invoices.reduce((sum, inv) => sum + Number(inv.iva_amount || 0), 0);
-  const totalIvaCollected = soldMachines.reduce((sum, m) => sum + Number(m.sale_iva || 0), 0);
+  const totalIvaPaid = machines.reduce((sum: any, m: any) => sum + Number(m.purchase_iva || 0), 0) + 
+                       invoices.reduce((sum: any, inv: any) => sum + Number(inv.iva_amount || 0), 0);
+  const totalIvaCollected = soldMachines.reduce((sum: any, m: any) => sum + Number(m.sale_iva || 0), 0);
   const netIva = totalIvaCollected - totalIvaPaid;
 
-  const filteredMachines = machines.filter(machine => 
+  const filteredMachines = machines.filter((machine: any) => 
     machine.machine_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     machine.serial_number.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // --- KANBAN & SALES LOGIC ---
-  const handleDragStart = (e, machineId) => e.dataTransfer.setData('machineId', machineId);
-  const handleDragOver = (e) => e.preventDefault();
+  const handleDragStart = (e: any, machineId: any) => e.dataTransfer.setData('machineId', machineId);
+  const handleDragOver = (e: any) => e.preventDefault();
   
-  const handleDrop = async (e, newStatus) => {
+  const handleDrop = async (e: any, newStatus: any) => {
     e.preventDefault();
     const machineId = e.dataTransfer.getData('machineId');
     if (newStatus === 'Sold') {
-      const machine = machines.find(m => m.id === machineId);
+      const machine = machines.find((m: any) => m.id === machineId);
       setSellingMachine(machine);
       return; 
     }
-    setMachines(prev => prev.map(m => m.id === machineId ? { ...m, status: newStatus, sale_price: 0, sale_iva: 0 } : m));
+    setMachines((prev: any[]) => prev.map((m: any) => m.id === machineId ? { ...m, status: newStatus, sale_price: 0, sale_iva: 0 } : m));
     await supabase.from('inventory').update({ status: newStatus, sale_price: 0, sale_iva: 0 }).eq('id', machineId);
   };
 
-  async function handleSellMachine(e) {
+  async function handleSellMachine(e: any) {
     e.preventDefault();
     const { error } = await supabase.from('inventory').update({ 
       status: 'Sold', sale_price: parseFloat(sellForm.sale_price) || 0, sale_iva: parseFloat(sellForm.sale_iva) || 0
@@ -108,7 +109,7 @@ const [machines, setMachines] = useState<any[]>([]);  const [isAdding, setIsAddi
     if (!error) { setSellingMachine(null); setSellForm({ sale_price: '', sale_iva: '' }); fetchInventory(); }
   }
 
-  async function handleAddMachine(e) {
+  async function handleAddMachine(e: any) {
     e.preventDefault();
     setIsUploading(true);
     let imageUrl = null;
@@ -132,9 +133,9 @@ const [machines, setMachines] = useState<any[]>([]);  const [isAdding, setIsAddi
     setIsUploading(false);
   }
 
-  async function handleAddRepair(e) {
+  async function handleAddRepair(e: any) {
     e.preventDefault();
-    const payload = {
+    const payload: any = {
       inventory_id: selectedMachine.id, item_description: repairForm.item_description,
       part_cost: parseFloat(repairForm.part_cost) || 0, labor_hours: parseFloat(repairForm.labor_hours) || 0,
     };
@@ -145,20 +146,20 @@ const [machines, setMachines] = useState<any[]>([]);  const [isAdding, setIsAddi
     setSelectedMachine(data);
   }
 
-  async function handleDeleteRepair(repairId) {
+  async function handleDeleteRepair(repairId: any) {
     await supabase.from('repair_logs').delete().eq('id', repairId); fetchInventory();
     const { data } = await supabase.from('inventory').select('*, repair_logs(*, parts_invoices(invoice_number, file_url, providers(name)))').eq('id', selectedMachine.id).single();
     setSelectedMachine(data);
   }
 
   // --- PROVIDER & INVOICE LOGIC ---
-  async function handleAddProvider(e) {
+  async function handleAddProvider(e: any) {
     e.preventDefault();
     await supabase.from('providers').insert([providerForm]);
     setIsAddingProvider(false); setProviderForm({ name: '', contact_info: '', notes: '' }); fetchProvidersAndInvoices();
   }
 
-  async function handleAddInvoice(e) {
+  async function handleAddInvoice(e: any) {
     e.preventDefault();
     setIsUploadingInvoice(true);
     let fileUrl = null;
@@ -176,7 +177,7 @@ const [machines, setMachines] = useState<any[]>([]);  const [isAdding, setIsAddi
     setIsUploadingInvoice(false);
   }
 
-  const calculateIva = (amount) => (parseFloat(amount) * 0.16).toFixed(2);
+  const calculateIva = (amount: any) => (parseFloat(amount) * 0.16).toFixed(2);
 
   return (
     <>
@@ -236,10 +237,10 @@ const [machines, setMachines] = useState<any[]>([]);  const [isAdding, setIsAddi
             {COLUMNS.map(column => (
               <div key={column} className="bg-gray-200 p-4 rounded-lg w-80 flex-shrink-0 min-h-[500px]" onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, column)}>
                 <h2 className="font-bold text-lg mb-4 text-gray-700 uppercase tracking-wide border-b-2 border-gray-300 pb-2">
-                  {column} ({filteredMachines.filter(m => m.status === column).length})
+                  {column} ({filteredMachines.filter((m: any) => m.status === column).length})
                 </h2>
                 <div className="flex flex-col gap-4">
-                  {filteredMachines.filter(m => m.status === column).map(machine => {
+                  {filteredMachines.filter((m: any) => m.status === column).map((machine: any) => {
                     const machineProfit = Number(machine.sale_price) - calculateTotalCost(machine);
                     return (
                       <div key={machine.id} draggable onDragStart={(e) => handleDragStart(e, machine.id)} onClick={() => setSelectedMachine(machine)} className="bg-white p-4 rounded shadow cursor-grab active:cursor-grabbing border-l-4 border-blue-500 hover:shadow-lg transition transform hover:-translate-y-1">
@@ -292,8 +293,8 @@ const [machines, setMachines] = useState<any[]>([]);  const [isAdding, setIsAddi
                   </tr>
                 </thead>
                 <tbody>
-                  {invoices.length === 0 ? <tr><td colSpan="6" className="p-4 text-center text-gray-500">No invoices logged yet.</td></tr> : (
-                    invoices.map(inv => (
+                  {invoices.length === 0 ? <tr><td colSpan={6} className="p-4 text-center text-gray-500">No invoices logged yet.</td></tr> : (
+                    invoices.map((inv: any) => (
                       <tr key={inv.id} className="hover:bg-gray-50 border-b text-gray-800">
                         <td className="p-3">{inv.invoice_date}</td><td className="p-3 font-semibold">{inv.providers?.name || 'Unknown'}</td><td className="p-3">{inv.invoice_number || 'N/A'}</td>
                         <td className="p-3 font-bold text-gray-800">{formatMXN(inv.total_amount)}</td>
@@ -316,7 +317,7 @@ const [machines, setMachines] = useState<any[]>([]);  const [isAdding, setIsAddi
               <form onSubmit={handleAddInvoice} className="flex flex-col gap-4">
                 <select required className="w-full p-2 border rounded text-black" value={invoiceForm.provider_id} onChange={e => setInvoiceForm({...invoiceForm, provider_id: e.target.value})}>
                   <option value="">Select a provider...</option>
-                  {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  {providers.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
                 <div className="flex gap-4">
                   <input type="text" placeholder="Invoice #" className="p-2 w-1/2 border rounded text-black" value={invoiceForm.invoice_number} onChange={e => setInvoiceForm({...invoiceForm, invoice_number: e.target.value})} />
@@ -328,12 +329,12 @@ const [machines, setMachines] = useState<any[]>([]);  const [isAdding, setIsAddi
                     <input required type="number" step="0.01" className="p-2 w-full border rounded text-black font-bold" value={invoiceForm.total_amount} onChange={e => setInvoiceForm({...invoiceForm, total_amount: e.target.value})} />
                   </div>
                   <div className="w-1/2">
-                    <label className="flex justify-between text-xs font-bold text-gray-500 uppercase"><span>IVA Paid</span><button type="button" tabIndex="-1" onClick={() => setInvoiceForm({...invoiceForm, iva_amount: calculateIva(invoiceForm.total_amount)})} className="text-blue-600 hover:underline">Auto 16%</button></label>
+                    <label className="flex justify-between text-xs font-bold text-gray-500 uppercase"><span>IVA Paid</span><button type="button" tabIndex={-1} onClick={() => setInvoiceForm({...invoiceForm, iva_amount: calculateIva(invoiceForm.total_amount)})} className="text-blue-600 hover:underline">Auto 16%</button></label>
                     <input required type="number" step="0.01" className="p-2 w-full border rounded text-black text-red-600" value={invoiceForm.iva_amount} onChange={e => setInvoiceForm({...invoiceForm, iva_amount: e.target.value})} />
                   </div>
                 </div>
                 <textarea placeholder="Notes" className="p-2 border rounded text-black h-20" value={invoiceForm.notes} onChange={e => setInvoiceForm({...invoiceForm, notes: e.target.value})} />
-                <input type="file" onChange={(e) => setInvoiceFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
+                <input type="file" onChange={(e: any) => setInvoiceFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
                 <div className="flex justify-end gap-2 mt-4"><button type="button" onClick={() => setIsAddingInvoice(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button><button type="submit" disabled={isUploadingInvoice} className="px-4 py-2 bg-green-600 text-white rounded font-bold">Save Invoice</button></div>
               </form>
             </div>
@@ -367,7 +368,7 @@ const [machines, setMachines] = useState<any[]>([]);  const [isAdding, setIsAddi
                   <input required type="number" step="0.01" className="w-full p-3 border rounded text-black font-bold text-lg" value={sellForm.sale_price} onChange={e => setSellForm({...sellForm, sale_price: e.target.value})} />
                 </div>
                 <div>
-                  <label className="flex justify-between text-sm font-bold text-gray-700 mb-1"><span>IVA Collected</span><button type="button" tabIndex="-1" onClick={() => setSellForm({...sellForm, sale_iva: calculateIva(sellForm.sale_price)})} className="text-blue-600 hover:underline">Auto 16%</button></label>
+                  <label className="flex justify-between text-sm font-bold text-gray-700 mb-1"><span>IVA Collected</span><button type="button" tabIndex={-1} onClick={() => setSellForm({...sellForm, sale_iva: calculateIva(sellForm.sale_price)})} className="text-blue-600 hover:underline">Auto 16%</button></label>
                   <input required type="number" step="0.01" className="w-full p-3 border rounded text-black text-green-700 font-bold" value={sellForm.sale_iva} onChange={e => setSellForm({...sellForm, sale_iva: e.target.value})} />
                 </div>
                 <div className="flex justify-end gap-2 mt-4"><button type="button" onClick={() => { setSellingMachine(null); fetchInventory(); }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button><button type="submit" className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded font-bold shadow">Confirm Sale</button></div>
@@ -382,7 +383,7 @@ const [machines, setMachines] = useState<any[]>([]);  const [isAdding, setIsAddi
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
                <h2 className="text-2xl font-bold mb-4 text-gray-800">Log New Machine</h2>
                <form onSubmit={handleAddMachine} className="flex flex-col gap-4">
-                  <input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
+                  <input type="file" accept="image/*" onChange={(e: any) => setImageFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
                   <input required placeholder="Machine Name" className="p-2 border rounded text-black" value={formData.machine_name} onChange={e => setFormData({...formData, machine_name: e.target.value})} />
                   <input required placeholder="Serial Number" className="p-2 border rounded text-black" value={formData.serial_number} onChange={e => setFormData({...formData, serial_number: e.target.value})} />
                   
@@ -394,7 +395,7 @@ const [machines, setMachines] = useState<any[]>([]);  const [isAdding, setIsAddi
                      <div className="w-1/2">
                        <label className="flex justify-between text-xs font-bold text-gray-500 uppercase">
                          <span>IVA Paid</span>
-                         <button type="button" tabIndex="-1" onClick={() => setFormData({...formData, purchase_iva: calculateIva(formData.purchase_price)})} className="text-blue-600 hover:underline">Auto 16%</button>
+                         <button type="button" tabIndex={-1} onClick={() => setFormData({...formData, purchase_iva: calculateIva(formData.purchase_price)})} className="text-blue-600 hover:underline">Auto 16%</button>
                        </label>
                        <input required type="number" step="0.01" className="p-2 w-full border rounded text-black text-red-600" value={formData.purchase_iva} onChange={e => setFormData({...formData, purchase_iva: e.target.value})} />
                      </div>
@@ -428,7 +429,7 @@ const [machines, setMachines] = useState<any[]>([]);  const [isAdding, setIsAddi
               <div className="overflow-y-auto mb-6 flex-grow">
                 {selectedMachine.repair_logs?.length === 0 ? <p className="text-gray-500 text-sm italic">No repairs logged yet.</p> : (
                   <ul className="flex flex-col gap-2">
-                    {selectedMachine.repair_logs?.map(log => (
+                    {selectedMachine.repair_logs?.map((log: any) => (
                       <li key={log.id} className="flex justify-between items-start bg-gray-50 p-2 border rounded text-black">
                         <div className="flex flex-col">
                           <div><span className="font-semibold">{log.item_description}</span><span className="text-xs text-gray-500 ml-2">({log.labor_hours} hrs)</span></div>
@@ -449,7 +450,7 @@ const [machines, setMachines] = useState<any[]>([]);  const [isAdding, setIsAddi
                 </div>
                 <select className="w-full p-2 border rounded text-sm text-gray-700 mt-1" value={repairForm.invoice_id} onChange={e => setRepairForm({...repairForm, invoice_id: e.target.value})}>
                   <option value="">-- Optional: Link to an Invoice --</option>
-                  {invoices.map(inv => <option key={inv.id} value={inv.id}>{inv.providers?.name} | Inv: {inv.invoice_number}</option>)}
+                  {invoices.map((inv: any) => <option key={inv.id} value={inv.id}>{inv.providers?.name} | Inv: {inv.invoice_number}</option>)}
                 </select>
               </form>
             </div>
@@ -487,7 +488,7 @@ const [machines, setMachines] = useState<any[]>([]);  const [isAdding, setIsAddi
                   <h3 className="text-lg font-bold text-blue-900 border-b border-blue-200 pb-2 mb-4">Inspection & Refurbishment Details</h3>
                   <ul className="list-disc pl-5 text-gray-800 flex flex-col gap-2">
                     <li>Comprehensive multi-point inspection passed.</li>
-                    {specSheetMachine.repair_logs?.map(log => <li key={log.id} className="font-semibold">{log.item_description}</li>)}
+                    {specSheetMachine.repair_logs?.map((log: any) => <li key={log.id} className="font-semibold">{log.item_description}</li>)}
                     {(!specSheetMachine.repair_logs || specSheetMachine.repair_logs.length === 0) && <li>Factory standard maintenance and cleaning performed.</li>}
                     <li>Ready for immediate deployment.</li>
                   </ul>
