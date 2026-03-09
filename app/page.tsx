@@ -21,13 +21,13 @@ export default function ERPPortal() {
   
   const [repairForm, setRepairForm] = useState({ item_description: '', part_cost: '', labor_hours: '', invoice_id: '' });
   const [imageFile, setImageFile] = useState<any>(null);
-  const [pedimentoFile, setPedimentoFile] = useState<any>(null); // NEW: Pedimento upload
+  const [pedimentoFile, setPedimentoFile] = useState<any>(null);
   const [isUploading, setIsUploading] = useState(false);
 
   // --- STATE: SELLING A MACHINE ---
   const [sellingMachine, setSellingMachine] = useState<any>(null);
   const [sellForm, setSellForm] = useState({ sale_price: '', sale_iva: '' });
-  const [saleInvoiceFile, setSaleInvoiceFile] = useState<any>(null); // NEW: Sale Invoice upload
+  const [saleInvoiceFile, setSaleInvoiceFile] = useState<any>(null);
 
   // --- STATE: INVOICES & PROVIDERS ---
   const [providers, setProviders] = useState<any[]>([]);
@@ -88,6 +88,53 @@ export default function ERPPortal() {
     machine.machine_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     machine.serial_number.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // --- EXPORT TO EXCEL/CSV LOGIC ---
+  const exportToCSV = (data: any[], filename: string) => {
+    if (!data || data.length === 0) return;
+    const headers = Object.keys(data[0]).join(',');
+    const rows = data.map((row: any) => 
+      Object.values(row).map((val: any) => {
+        if (val === null || val === undefined) return '""';
+        return `"${String(val).replace(/"/g, '""')}"`;
+      }).join(',')
+    );
+    const csvContent = [headers, ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${filename}.csv`;
+    link.click();
+  };
+
+  const exportMachines = () => {
+    const formattedData = machines.map((m: any) => ({
+      Machine_Name: m.machine_name,
+      Serial_Number: m.serial_number,
+      Status: m.status,
+      Purchase_Price: m.purchase_price,
+      Purchase_IVA: m.purchase_iva,
+      Shipping_Cost: m.shipping_in_cost,
+      Import_Fee: m.import_fee,
+      Total_Invested: calculateTotalCost(m),
+      Sale_Price: m.sale_price,
+      Sale_IVA: m.sale_iva,
+      Date_Acquired: m.date_acquired ? m.date_acquired.split('T')[0] : ''
+    }));
+    exportToCSV(formattedData, `FineEdge_Machines_${new Date().toISOString().split('T')[0]}`);
+  };
+
+  const exportInvoices = () => {
+    const formattedData = invoices.map((inv: any) => ({
+      Date: inv.invoice_date,
+      Provider: inv.providers?.name || 'Unknown',
+      Invoice_Number: inv.invoice_number,
+      Total_Amount: inv.total_amount,
+      IVA_Paid: inv.iva_amount,
+      Notes: inv.notes
+    }));
+    exportToCSV(formattedData, `FineEdge_Invoices_${new Date().toISOString().split('T')[0]}`);
+  };
 
   // --- KANBAN & SALES LOGIC ---
   const handleDragStart = (e: any, machineId: any) => e.dataTransfer.setData('machineId', machineId);
@@ -328,7 +375,14 @@ export default function ERPPortal() {
           {activeTab === 'kanban' && (
             <div className="flex gap-4 items-center">
               <input type="text" placeholder="🔍 Search name or S/N..." className="p-2 border border-gray-300 rounded text-black w-64 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+              <button onClick={exportMachines} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold shadow transition">📊 Export CSV</button>
               <button onClick={() => setIsAdding(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow transition">+ Add Machine</button>
+            </div>
+          )}
+
+          {activeTab === 'invoices' && (
+            <div className="flex gap-4 items-center">
+              <button onClick={exportInvoices} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold shadow transition">📊 Export CSV</button>
             </div>
           )}
         </div>
