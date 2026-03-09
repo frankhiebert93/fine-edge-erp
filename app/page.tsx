@@ -17,7 +17,7 @@ export default function ERPPortal() {
     } else {
       const pin = window.prompt("Enter Admin PIN to unlock editing:");
       // CHANGE THIS PIN RIGHT HERE:
-      if (pin === "1234") { 
+      if (pin === "6542") { 
         setIsAdmin(true);
       } else if (pin !== null) {
         alert("Incorrect PIN. View Only Mode active.");
