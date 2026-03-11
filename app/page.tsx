@@ -37,7 +37,7 @@ export default function ERPPortal() {
   // Add & Edit Forms (Machinery)
   const [formData, setFormData] = useState({ machine_name: '', serial_number: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '' });
   const [editingMachine, setEditingMachine] = useState<any>(null);
-  const [editFormData, setEditFormData] = useState<any>({ machine_name: '', serial_number: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '' });
+  const [editFormData, setEditFormData] = useState<any>({ machine_name: '', serial_number: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '', invoice_date: '', due_date: '' });
   
   const [repairForm, setRepairForm] = useState({ item_description: '', part_cost: '', labor_hours: '', invoice_id: '' });
   const [imageFile, setImageFile] = useState<any>(null);
@@ -46,7 +46,7 @@ export default function ERPPortal() {
 
   // --- STATE: SELLING A MACHINE ---
   const [sellingMachine, setSellingMachine] = useState<any>(null);
-  const [sellForm, setSellForm] = useState({ sale_price: '', sale_iva: '', is_paid: false });
+  const [sellForm, setSellForm] = useState({ sale_price: '', sale_iva: '', is_paid: false, invoice_date: '', due_date: '' });
   const [saleInvoiceFile, setSaleInvoiceFile] = useState<any>(null);
 
   // --- STATE: INVOICES & PROVIDERS ---
@@ -165,6 +165,8 @@ export default function ERPPortal() {
       Serial_Number: m.serial_number,
       Status: m.status,
       Paid_By_Customer: m.is_paid ? 'Yes' : 'No',
+      Invoice_Sent: m.invoice_date || '',
+      Payment_Due: m.due_date || '',
       Purchase_Price: m.purchase_price,
       Purchase_IVA: m.purchase_iva,
       Shipping_Cost: m.shipping_in_cost,
@@ -208,8 +210,24 @@ export default function ERPPortal() {
       setSellingMachine(machine);
       return; 
     }
-    setMachines((prev: any[]) => prev.map((m: any) => m.id === machineId ? { ...m, status: newStatus, sale_price: 0, sale_iva: 0, is_paid: false } : m));
-    await supabase.from('inventory').update({ status: newStatus, sale_price: 0, sale_iva: 0, is_paid: false }).eq('id', machineId);
+    setMachines((prev: any[]) => prev.map((m: any) => m.id === machineId ? { ...m, status: newStatus, sale_price: 0, sale_iva: 0, is_paid: false, invoice_date: null, due_date: null } : m));
+    await supabase.from('inventory').update({ status: newStatus, sale_price: 0, sale_iva: 0, is_paid: false, invoice_date: null, due_date: null }).eq('id', machineId);
+  };
+
+  // Auto-calculate +30 days for due date when invoice date is entered
+  const handleInvoiceDateChange = (e: any) => {
+    const invDate = e.target.value;
+    if (invDate) {
+      const [year, month, day] = invDate.split('-');
+      const dateObj = new Date(Number(year), Number(month) - 1, Number(day));
+      dateObj.setDate(dateObj.getDate() + 30);
+      const y = dateObj.getFullYear();
+      const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const d = String(dateObj.getDate()).padStart(2, '0');
+      setSellForm({...sellForm, invoice_date: invDate, due_date: `${y}-${m}-${d}`});
+    } else {
+      setSellForm({...sellForm, invoice_date: invDate, due_date: ''});
+    }
   };
 
   async function handleSellMachine(e: any) {
@@ -233,12 +251,14 @@ export default function ERPPortal() {
       sale_price: parseFloat(sellForm.sale_price) || 0, 
       sale_iva: parseFloat(sellForm.sale_iva) || 0,
       is_paid: sellForm.is_paid,
+      invoice_date: sellForm.invoice_date || null,
+      due_date: sellForm.due_date || null,
       sale_invoice_url: saleInvoiceUrl
     }).eq('id', sellingMachine.id);
 
     if (!error) { 
       setSellingMachine(null); 
-      setSellForm({ sale_price: '', sale_iva: '', is_paid: false }); 
+      setSellForm({ sale_price: '', sale_iva: '', is_paid: false, invoice_date: '', due_date: '' }); 
       setSaleInvoiceFile(null);
       fetchInventory(); 
     }
@@ -250,10 +270,7 @@ export default function ERPPortal() {
     if (!isAdmin) return;
     const newStatus = !currentStatus;
     
-    // Instantly update the UI so it feels fast
     setMachines((prev: any[]) => prev.map(m => m.id === machineId ? { ...m, is_paid: newStatus } : m));
-    
-    // Save to database
     await supabase.from('inventory').update({ is_paid: newStatus }).eq('id', machineId);
   }
 
@@ -312,7 +329,9 @@ export default function ERPPortal() {
       purchase_price: machine.purchase_price || '',
       purchase_iva: machine.purchase_iva || '',
       shipping_in_cost: machine.shipping_in_cost || '',
-      import_fee: machine.import_fee || ''
+      import_fee: machine.import_fee || '',
+      invoice_date: machine.invoice_date || '',
+      due_date: machine.due_date || ''
     });
   }
 
@@ -332,7 +351,7 @@ export default function ERPPortal() {
       pedimentoUrl = supabase.storage.from('machine-docs').getPublicUrl(fileName).data.publicUrl;
     }
 
-    const { error } = await supabase.from('inventory').update({
+    const payload: any = {
       machine_name: editFormData.machine_name,
       serial_number: editFormData.serial_number,
       purchase_price: parseFloat(editFormData.purchase_price) || 0,
@@ -340,7 +359,15 @@ export default function ERPPortal() {
       shipping_in_cost: parseFloat(editFormData.shipping_in_cost) || 0,
       import_fee: parseFloat(editFormData.import_fee) || 0,
       pedimento_url: pedimentoUrl
-    }).eq('id', editingMachine.id);
+    };
+
+    // Only update AR dates if the machine is actually Sold
+    if (editingMachine.status === 'Sold') {
+       payload.invoice_date = editFormData.invoice_date || null;
+       payload.due_date = editFormData.due_date || null;
+    }
+
+    const { error } = await supabase.from('inventory').update(payload).eq('id', editingMachine.id);
     
     if (!error) {
       setEditingMachine(null);
@@ -593,6 +620,7 @@ export default function ERPPortal() {
             </div>
           </div>
 
+          {/* NET CASH FLOW WIDGET */}
           <div className={`flex-1 min-w-[200px] bg-white p-6 rounded-lg shadow border-l-4 ${netCashFlow >= 0 ? 'border-purple-500' : 'border-red-500'}`}>
             <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide mb-1">Net Cash Flow</h3>
             <p className={`text-3xl font-bold ${netCashFlow >= 0 ? 'text-purple-600' : 'text-red-600'}`}>{formatMXN(netCashFlow)}</p>
@@ -638,6 +666,8 @@ export default function ERPPortal() {
                 <div className="flex flex-col gap-4">
                   {filteredMachines.filter((m: any) => m.status === column).map((machine: any) => {
                     const machineProfit = Number(machine.sale_price) - calculateTotalCost(machine);
+                    const isOverdue = machine.due_date ? (new Date(machine.due_date) < new Date()) : false;
+
                     return (
                       <div key={machine.id} draggable={isAdmin} onDragStart={(e) => handleDragStart(e, machine.id)} onClick={() => setSelectedMachine(machine)} className={`bg-white p-4 rounded shadow ${isAdmin ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} border-l-4 border-blue-500 hover:shadow-lg transition transform hover:-translate-y-1`}>
                         {machine.image_url && <img src={machine.image_url} alt="Machine" className="w-full h-40 object-cover rounded mb-3 border" />}
@@ -648,7 +678,16 @@ export default function ERPPortal() {
                            <div className="bg-gray-50 border p-2 rounded text-xs mb-2">
                              <span className="font-bold text-gray-700">Sold for:</span> {formatMXN(machine.sale_price)} <br/> 
                              <span className="font-bold text-gray-700">IVA:</span> {formatMXN(machine.sale_iva)} <br/>
-                             <span className={`font-bold mt-1 block border-t pt-1 ${machineProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                             
+                             {/* AR TRACKER: Only shows if Pending and dates exist */}
+                             {!machine.is_paid && (machine.invoice_date || machine.due_date) && (
+                               <div className="mt-2 mb-2 bg-yellow-50 border border-yellow-200 p-2 rounded text-xs">
+                                 <span className="font-bold text-gray-700">Inv Sent:</span> {machine.invoice_date || 'N/A'} <br/>
+                                 <span className="font-bold text-gray-700">Due Date:</span> <span className={isOverdue ? 'text-red-600 font-extrabold' : 'text-gray-800 font-bold'}>{machine.due_date || 'N/A'} {isOverdue && '(OVERDUE)'}</span>
+                               </div>
+                             )}
+
+                             <span className={`font-bold mt-2 block border-t pt-1 ${machineProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                                Profit: {formatMXN(machineProfit)}
                              </span>
                              <div className="mt-2 pt-2 border-t flex justify-between items-center">
@@ -954,13 +993,25 @@ export default function ERPPortal() {
                   <input required type="number" step="0.01" className="w-full p-3 border rounded text-black text-green-700 font-bold" value={sellForm.sale_iva} onChange={e => setSellForm({...sellForm, sale_iva: e.target.value})} />
                 </div>
                 
+                {/* NEW: ACCOUNTS RECEIVABLE DATES */}
+                <div className="flex gap-4 mt-2">
+                  <div className="w-1/2">
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Invoice Sent Date</label>
+                    <input type="date" className="w-full p-2 border rounded text-black" value={sellForm.invoice_date} onChange={handleInvoiceDateChange} />
+                  </div>
+                  <div className="w-1/2">
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Due Date</label>
+                    <input type="date" className="w-full p-2 border rounded text-black" value={sellForm.due_date} onChange={e => setSellForm({...sellForm, due_date: e.target.value})} />
+                  </div>
+                </div>
+
                 <label className="flex items-center gap-2 mt-2 p-3 bg-gray-50 border rounded cursor-pointer hover:bg-gray-100">
-                  <input type="checkbox" className="w-5 h-5 text-green-600" checked={sellForm.is_paid} onChange={e => setSellForm({...sellForm, is_paid: e.target.checked})} />
+                  <input type="checkbox" className="w-5 h-5 text-green-600" checked={sellForm.is_paid} onChange={e => setSellForm({...sellForm, is_paid: e.target.checked, invoice_date: e.target.checked ? '' : sellForm.invoice_date, due_date: e.target.checked ? '' : sellForm.due_date})} />
                   <span className="text-sm font-bold text-gray-700">Payment Received Immediately?</span>
                 </label>
 
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">Upload Sale Invoice (Optional)</label>
+                  <label className="block text-sm font-bold text-gray-700 mb-1 mt-2">Upload Sale Invoice (Optional)</label>
                   <input type="file" onChange={(e: any) => setSaleInvoiceFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
                 </div>
                 <div className="flex justify-end gap-2 mt-4"><button type="button" onClick={() => { setSellingMachine(null); fetchInventory(); }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button><button type="submit" disabled={isUploading} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded font-bold shadow">Confirm Sale</button></div>
@@ -969,7 +1020,7 @@ export default function ERPPortal() {
           </div>
         )}
 
-        {/* --- ADD MACHINE MODAL --- */}
+        {/* --- EDIT MACHINE MODAL --- */}
         {isAdding && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
@@ -1018,7 +1069,7 @@ export default function ERPPortal() {
         {/* --- EDIT MACHINE MODAL --- */}
         {editingMachine && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-blue-500">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-blue-500 max-h-[90vh] overflow-y-auto">
                <h2 className="text-2xl font-bold mb-4 text-gray-800">Edit Machine Details</h2>
                <form onSubmit={handleUpdateMachine} className="flex flex-col gap-4">
                   <input required placeholder="Machine Name" className="p-2 border rounded text-black" value={editFormData.machine_name} onChange={e => setEditFormData({...editFormData, machine_name: e.target.value})} />
@@ -1046,8 +1097,24 @@ export default function ERPPortal() {
                      </div>
                   </div>
 
+                  {editingMachine.status === 'Sold' && (
+                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded mt-2">
+                      <h3 className="text-xs font-bold text-gray-700 mb-2 uppercase">Accounts Receivable Dates</h3>
+                      <div className="flex gap-4">
+                        <div className="w-1/2">
+                          <label className="block text-xs font-bold text-gray-500 mb-1">Invoice Sent</label>
+                          <input type="date" className="p-2 w-full border rounded text-black" value={editFormData.invoice_date} onChange={e => setEditFormData({...editFormData, invoice_date: e.target.value})} />
+                        </div>
+                        <div className="w-1/2">
+                          <label className="block text-xs font-bold text-gray-500 mb-1">Due Date</label>
+                          <input type="date" className="p-2 w-full border rounded text-black" value={editFormData.due_date} onChange={e => setEditFormData({...editFormData, due_date: e.target.value})} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Upload/Replace Pedimento</label>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1 mt-2">Upload/Replace Pedimento</label>
                     <input type="file" accept=".pdf,image/*" onChange={(e: any) => setPedimentoFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
                     {editingMachine.pedimento_url && <p className="text-xs text-blue-600 mt-1">A pedimento is currently attached.</p>}
                   </div>
