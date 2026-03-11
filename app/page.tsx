@@ -76,10 +76,16 @@ export default function ERPPortal() {
   // --- STATE: EXCHANGE RATE ---
   const [exchangeRate, setExchangeRate] = useState('18.00');
 
+  // --- STATE: CASH BOX ---
+  const [cashBoxLogs, setCashBoxLogs] = useState<any[]>([]);
+  const [isAddingCash, setIsAddingCash] = useState(false);
+  const [cashForm, setCashForm] = useState({ amount: '', notes: '', date: '' });
+
   useEffect(() => {
     fetchInventory();
     fetchProvidersAndInvoices();
     fetchSatPayments();
+    fetchCashBox();
   }, []);
 
   async function fetchInventory() {
@@ -99,6 +105,11 @@ export default function ERPPortal() {
   async function fetchSatPayments() {
     const { data, error } = await supabase.from('iva_payments').select('*').order('payment_date', { ascending: false });
     if (!error) setSatPayments(data || []);
+  }
+
+  async function fetchCashBox() {
+    const { data, error } = await supabase.from('cash_box').select('*');
+    if (!error) setCashBoxLogs(data || []);
   }
 
   // --- CALCULATIONS & METRICS ---
@@ -135,6 +146,9 @@ export default function ERPPortal() {
   const unlinkedRepairsCost = machines.reduce((sum: any, m: any) => sum + (m.repair_logs?.filter((log: any) => !log.invoice_id).reduce((s: any, l: any) => s + Number(l.part_cost), 0) || 0), 0);
   const totalCashOut = totalMachineSpend + totalInvoicesValue + totalIvaPaidToSat + unlinkedRepairsCost;
   const netCashFlow = totalCashIn - totalCashOut;
+
+  // CASH BOX MATH
+  const cashBoxTotal = cashBoxLogs.reduce((sum: any, log: any) => sum + Number(log.amount), 0);
 
   const filteredMachines = machines.filter((machine: any) => 
     machine.machine_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -214,7 +228,6 @@ export default function ERPPortal() {
     await supabase.from('inventory').update({ status: newStatus, sale_price: 0, sale_iva: 0, is_paid: false, invoice_date: null, due_date: null }).eq('id', machineId);
   };
 
-  // Auto-calculate +30 days for due date when invoice date is entered
   const handleInvoiceDateChange = (e: any) => {
     const invDate = e.target.value;
     if (invDate) {
@@ -361,7 +374,6 @@ export default function ERPPortal() {
       pedimento_url: pedimentoUrl
     };
 
-    // Only update AR dates if the machine is actually Sold
     if (editingMachine.status === 'Sold') {
        payload.invoice_date = editFormData.invoice_date || null;
        payload.due_date = editFormData.due_date || null;
@@ -550,6 +562,24 @@ export default function ERPPortal() {
     setIsUploadingSat(false);
   }
 
+  // --- CASH BOX LOGIC ---
+  async function handleAddCash(e: any) {
+    e.preventDefault();
+    if (!isAdmin) return;
+    const { error } = await supabase.from('cash_box').insert([{
+      amount: parseFloat(cashForm.amount) || 0,
+      notes: cashForm.notes,
+      date: cashForm.date || new Date().toISOString().split('T')[0]
+    }]);
+    if (!error) {
+      setIsAddingCash(false);
+      setCashForm({ amount: '', notes: '', date: '' });
+      fetchCashBox();
+    } else {
+      alert(`Database Error: ${error.message}`);
+    }
+  }
+
   const calculateIva = (amount: any) => (parseFloat(amount) * 0.16).toFixed(2);
 
   return (
@@ -620,11 +650,22 @@ export default function ERPPortal() {
             </div>
           </div>
 
-          {/* NET CASH FLOW WIDGET */}
           <div className={`flex-1 min-w-[200px] bg-white p-6 rounded-lg shadow border-l-4 ${netCashFlow >= 0 ? 'border-purple-500' : 'border-red-500'}`}>
             <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide mb-1">Net Cash Flow</h3>
             <p className={`text-3xl font-bold ${netCashFlow >= 0 ? 'text-purple-600' : 'text-red-600'}`}>{formatMXN(netCashFlow)}</p>
             <p className="text-xs text-gray-400 mt-1">Total in vs. Total out</p>
+          </div>
+
+          {/* NEW CASH BOX WIDGET */}
+          <div className="flex-1 min-w-[200px] bg-white p-6 rounded-lg shadow border-l-4 border-green-800">
+            <div className="flex justify-between items-start mb-1">
+               <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide">Cash Box (Untaxed)</h3>
+               {isAdmin && (
+                 <button onClick={() => setIsAddingCash(true)} className="text-xs bg-gray-100 text-gray-700 hover:bg-gray-200 font-bold px-2 py-1 rounded border border-gray-300 transition shadow-sm">+/- Log</button>
+               )}
+            </div>
+            <p className="text-3xl font-bold text-green-800">{formatMXN(cashBoxTotal)}</p>
+            <p className="text-xs text-gray-400 mt-1">Off-the-books cash</p>
           </div>
         </div>
 
@@ -817,6 +858,25 @@ export default function ERPPortal() {
           </div>
         )}
 
+        {/* --- ADD CASH BOX MODAL --- */}
+        {isAddingCash && isAdmin && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-sm shadow-xl border-t-8 border-green-800">
+              <h2 className="text-2xl font-bold mb-2 text-gray-800">Update Cash Box</h2>
+              <p className="text-sm text-gray-600 mb-4">Use a positive number to add cash, and a negative number (e.g., -500) to remove cash.</p>
+              <form onSubmit={handleAddCash} className="flex flex-col gap-4">
+                <input required type="date" className="p-2 border rounded text-black" value={cashForm.date} onChange={e => setCashForm({...cashForm, date: e.target.value})} />
+                <input required type="number" step="0.01" placeholder="Amount (Use - to subtract)" className="p-2 border rounded text-black font-bold text-lg" value={cashForm.amount} onChange={e => setCashForm({...cashForm, amount: e.target.value})} />
+                <input type="text" placeholder="Notes (e.g., Sold scrap, bought lunch)" className="p-2 border rounded text-black" value={cashForm.notes} onChange={e => setCashForm({...cashForm, notes: e.target.value})} />
+                <div className="flex justify-end gap-2 mt-2">
+                  <button type="button" onClick={() => setIsAddingCash(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
+                  <button type="submit" className="px-4 py-2 bg-green-800 hover:bg-green-900 text-white rounded font-bold shadow">Save Log</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
         {/* --- ADD INVOICE MODAL --- */}
         {isAddingInvoice && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -993,7 +1053,7 @@ export default function ERPPortal() {
                   <input required type="number" step="0.01" className="w-full p-3 border rounded text-black text-green-700 font-bold" value={sellForm.sale_iva} onChange={e => setSellForm({...sellForm, sale_iva: e.target.value})} />
                 </div>
                 
-                {/* NEW: ACCOUNTS RECEIVABLE DATES */}
+                {/* ACCOUNTS RECEIVABLE DATES */}
                 <div className="flex gap-4 mt-2">
                   <div className="w-1/2">
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Invoice Sent Date</label>
@@ -1020,7 +1080,7 @@ export default function ERPPortal() {
           </div>
         )}
 
-        {/* --- EDIT MACHINE MODAL --- */}
+        {/* --- ADD MACHINE MODAL --- */}
         {isAdding && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
