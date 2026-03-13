@@ -13,7 +13,7 @@ export default function ERPPortal() {
 
   const handleAdminToggle = () => {
     if (isAdmin) {
-      setIsAdmin(false); 
+      setIsAdmin(false); // Lock it back
     } else {
       const pin = window.prompt("Enter Admin PIN to unlock editing:");
       // CHANGE THIS PIN RIGHT HERE:
@@ -34,6 +34,7 @@ export default function ERPPortal() {
   const [selectedMachine, setSelectedMachine] = useState<any>(null);
   const [specSheetMachine, setSpecSheetMachine] = useState<any>(null); 
 
+  // Add & Edit Forms (Machinery)
   const [formData, setFormData] = useState({ machine_name: '', serial_number: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '' });
   const [editingMachine, setEditingMachine] = useState<any>(null);
   const [editFormData, setEditFormData] = useState<any>({ machine_name: '', serial_number: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '', invoice_date: '', due_date: '' });
@@ -43,6 +44,7 @@ export default function ERPPortal() {
   const [pedimentoFile, setPedimentoFile] = useState<any>(null);
   const [isUploading, setIsUploading] = useState(false);
 
+  // --- STATE: SELLING A MACHINE ---
   const [sellingMachine, setSellingMachine] = useState<any>(null);
   const [sellForm, setSellForm] = useState({ sale_price: '', sale_iva: '', is_paid: false, invoice_date: '', due_date: '' });
   const [saleInvoiceFile, setSaleInvoiceFile] = useState<any>(null);
@@ -126,6 +128,7 @@ export default function ERPPortal() {
   const currentInventoryValue = inShopMachines.reduce((total: any, m: any) => total + calculateTotalCost(m), 0);
   const totalInvoicesValue = invoices.reduce((total: any, inv: any) => total + Number(inv.total_amount), 0); // Show all accrued expenses
   
+  // Realized profit stays as total sold (accrual accounting to see if business model is profitable)
   const netProfit = soldMachines.reduce((total: any, m: any) => total + (Number(m.sale_price) - calculateTotalCost(m)), 0);
 
   // IVA Math (CASH BASIS - Only counts paid invoices and paid sales)
@@ -137,7 +140,7 @@ export default function ERPPortal() {
   const totalIvaPaidToSat = satPayments.reduce((sum: any, p: any) => sum + Number(p.amount), 0);
   const currentIvaOwed = grossIvaBalance - totalIvaPaidToSat;
 
-  // CASH FLOW MATH (CASH BASIS - Only counts paid invoices)
+  // CASH FLOW MATH (CASH BASIS - Only counts money actually in the bank)
   const totalCashIn = soldMachines.filter((m:any) => m.is_paid).reduce((sum: any, m: any) => sum + Number(m.sale_price) + Number(m.sale_iva || 0), 0);
   const paidInvoicesValue = invoices.filter((inv:any) => inv.is_paid).reduce((sum: any, inv: any) => sum + Number(inv.total_amount), 0);
   const totalMachineSpend = machines.reduce((sum: any, m: any) => sum + Number(m.purchase_price) + Number(m.purchase_iva || 0) + Number(m.shipping_in_cost) + Number(m.import_fee || 0), 0);
@@ -281,6 +284,7 @@ export default function ERPPortal() {
     e.stopPropagation();
     if (!isAdmin) return;
     const newStatus = !currentStatus;
+    
     setMachines((prev: any[]) => prev.map(m => m.id === machineId ? { ...m, is_paid: newStatus } : m));
     await supabase.from('inventory').update({ is_paid: newStatus }).eq('id', machineId);
   }
@@ -458,6 +462,7 @@ export default function ERPPortal() {
   function openEditInvoiceModal(invoice: any) {
     if (!isAdmin) return;
     setEditingInvoice(invoice);
+    setInvoiceFile(null); // Clear any old file selection
     const isSinFactura = invoice.invoice_number === 'Sin Factura';
     setEditInvoiceForm({
       provider_id: invoice.provider_id || '',
@@ -474,6 +479,20 @@ export default function ERPPortal() {
   async function handleUpdateInvoice(e: any) {
     e.preventDefault();
     if (!isAdmin) return;
+    setIsUploadingInvoice(true);
+    let fileUrl = editingInvoice.file_url;
+
+    // Check if user selected a new file to replace the old one
+    if (invoiceFile) {
+      const fileName = `inv-${Date.now()}-${sanitizeFileName(invoiceFile.name)}`;
+      const { error: uploadError } = await supabase.storage.from('invoices').upload(fileName, invoiceFile);
+      if (uploadError) {
+        alert("File upload failed: " + uploadError.message);
+        setIsUploadingInvoice(false); return;
+      }
+      fileUrl = supabase.storage.from('invoices').getPublicUrl(fileName).data.publicUrl;
+    }
+
     const { error } = await supabase.from('parts_invoices').update({
       provider_id: editInvoiceForm.provider_id,
       invoice_number: editInvoiceForm.no_factura ? 'Sin Factura' : editInvoiceForm.invoice_number,
@@ -481,13 +500,18 @@ export default function ERPPortal() {
       iva_amount: editInvoiceForm.no_factura ? 0 : (parseFloat(editInvoiceForm.iva_amount) || 0),
       invoice_date: editInvoiceForm.invoice_date,
       notes: editInvoiceForm.notes,
-      is_paid: editInvoiceForm.is_paid
+      is_paid: editInvoiceForm.is_paid,
+      file_url: fileUrl
     }).eq('id', editingInvoice.id);
     
     if (!error) {
       setEditingInvoice(null);
+      setInvoiceFile(null);
       fetchProvidersAndInvoices();
+    } else {
+      alert(`Database Error: ${error.message}`);
     }
+    setIsUploadingInvoice(false);
   }
 
   // --- SAT PAYMENT LOGIC ---
@@ -933,7 +957,6 @@ export default function ERPPortal() {
                   </div>
                 </div>
                 
-                {/* NEW: IS PAID CHECKBOX */}
                 <label className="flex items-center gap-2 mt-2 p-3 bg-gray-50 border rounded cursor-pointer hover:bg-gray-100">
                   <input type="checkbox" className="w-5 h-5 text-green-600" checked={invoiceForm.is_paid} onChange={e => setInvoiceForm({...invoiceForm, is_paid: e.target.checked})} />
                   <span className="text-sm font-bold text-gray-700">Payment Sent Immediately?</span>
@@ -991,7 +1014,14 @@ export default function ERPPortal() {
 
                 <textarea placeholder="Notes / Items Bought" className="p-2 border rounded text-black h-20" value={editInvoiceForm.notes} onChange={e => setEditInvoiceForm({...editInvoiceForm, notes: e.target.value})} />
                 
-                <div className="flex justify-end gap-2 mt-4"><button type="button" onClick={() => setEditingInvoice(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-700">Update Purchase</button></div>
+                {/* NEW: Upload/Replace Receipt */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Upload/Replace Receipt</label>
+                  <input type="file" accept=".pdf,image/*" onChange={(e: any) => setInvoiceFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
+                  {editingInvoice.file_url && <p className="text-xs text-blue-600 mt-1">A receipt is currently attached.</p>}
+                </div>
+
+                <div className="flex justify-end gap-2 mt-4"><button type="button" onClick={() => {setEditingInvoice(null); setInvoiceFile(null);}} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button><button type="submit" disabled={isUploadingInvoice} className="px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-700">Update Purchase</button></div>
               </form>
             </div>
           </div>
