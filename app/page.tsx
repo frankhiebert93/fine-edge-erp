@@ -13,7 +13,7 @@ export default function ERPPortal() {
 
   const handleAdminToggle = () => {
     if (isAdmin) {
-      setIsAdmin(false); // Lock it back
+      setIsAdmin(false); 
     } else {
       const pin = window.prompt("Enter Admin PIN to unlock editing:");
       // CHANGE THIS PIN RIGHT HERE:
@@ -34,7 +34,6 @@ export default function ERPPortal() {
   const [selectedMachine, setSelectedMachine] = useState<any>(null);
   const [specSheetMachine, setSpecSheetMachine] = useState<any>(null); 
 
-  // Add & Edit Forms (Machinery)
   const [formData, setFormData] = useState({ machine_name: '', serial_number: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '' });
   const [editingMachine, setEditingMachine] = useState<any>(null);
   const [editFormData, setEditFormData] = useState<any>({ machine_name: '', serial_number: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '', invoice_date: '', due_date: '' });
@@ -44,7 +43,6 @@ export default function ERPPortal() {
   const [pedimentoFile, setPedimentoFile] = useState<any>(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  // --- STATE: SELLING A MACHINE ---
   const [sellingMachine, setSellingMachine] = useState<any>(null);
   const [sellForm, setSellForm] = useState({ sale_price: '', sale_iva: '', is_paid: false, invoice_date: '', due_date: '' });
   const [saleInvoiceFile, setSaleInvoiceFile] = useState<any>(null);
@@ -56,12 +54,12 @@ export default function ERPPortal() {
   const [isAddingInvoice, setIsAddingInvoice] = useState(false);
   const [providerForm, setProviderForm] = useState({ name: '', contact_info: '', notes: '' });
   
-  const [invoiceForm, setInvoiceForm] = useState({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', notes: '', no_factura: false });
+  const [invoiceForm, setInvoiceForm] = useState({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', notes: '', no_factura: false, is_paid: false });
   const [invoiceFile, setInvoiceFile] = useState<any>(null);
   const [isUploadingInvoice, setIsUploadingInvoice] = useState(false);
 
   const [editingInvoice, setEditingInvoice] = useState<any>(null);
-  const [editInvoiceForm, setEditInvoiceForm] = useState<any>({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', notes: '', no_factura: false });
+  const [editInvoiceForm, setEditInvoiceForm] = useState<any>({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', notes: '', no_factura: false, is_paid: false });
 
   // --- STATE: SAT PAYMENTS ---
   const [satPayments, setSatPayments] = useState<any[]>([]);
@@ -126,25 +124,25 @@ export default function ERPPortal() {
   const soldMachines = machines.filter((m: any) => m.status === 'Sold');
   
   const currentInventoryValue = inShopMachines.reduce((total: any, m: any) => total + calculateTotalCost(m), 0);
-  const totalInvoicesValue = invoices.reduce((total: any, inv: any) => total + Number(inv.total_amount), 0);
+  const totalInvoicesValue = invoices.reduce((total: any, inv: any) => total + Number(inv.total_amount), 0); // Show all accrued expenses
   
-  // Realized profit stays as total sold (accrual accounting to see if business model is profitable)
   const netProfit = soldMachines.reduce((total: any, m: any) => total + (Number(m.sale_price) - calculateTotalCost(m)), 0);
 
-  // IVA Math (CASH BASIS - Only counts what has actually been paid to you)
+  // IVA Math (CASH BASIS - Only counts paid invoices and paid sales)
   const totalIvaPaid = machines.reduce((sum: any, m: any) => sum + Number(m.purchase_iva || 0), 0) + 
-                       invoices.reduce((sum: any, inv: any) => sum + Number(inv.iva_amount || 0), 0);
+                       invoices.filter((inv:any) => inv.is_paid).reduce((sum: any, inv: any) => sum + Number(inv.iva_amount || 0), 0);
   const totalIvaCollected = soldMachines.filter((m:any) => m.is_paid).reduce((sum: any, m: any) => sum + Number(m.sale_iva || 0), 0);
   
   const grossIvaBalance = totalIvaCollected - totalIvaPaid;
   const totalIvaPaidToSat = satPayments.reduce((sum: any, p: any) => sum + Number(p.amount), 0);
   const currentIvaOwed = grossIvaBalance - totalIvaPaidToSat;
 
-  // CASH FLOW MATH (CASH BASIS - Only counts money actually in the bank)
+  // CASH FLOW MATH (CASH BASIS - Only counts paid invoices)
   const totalCashIn = soldMachines.filter((m:any) => m.is_paid).reduce((sum: any, m: any) => sum + Number(m.sale_price) + Number(m.sale_iva || 0), 0);
+  const paidInvoicesValue = invoices.filter((inv:any) => inv.is_paid).reduce((sum: any, inv: any) => sum + Number(inv.total_amount), 0);
   const totalMachineSpend = machines.reduce((sum: any, m: any) => sum + Number(m.purchase_price) + Number(m.purchase_iva || 0) + Number(m.shipping_in_cost) + Number(m.import_fee || 0), 0);
   const unlinkedRepairsCost = machines.reduce((sum: any, m: any) => sum + (m.repair_logs?.filter((log: any) => !log.invoice_id).reduce((s: any, l: any) => s + Number(l.part_cost), 0) || 0), 0);
-  const totalCashOut = totalMachineSpend + totalInvoicesValue + totalIvaPaidToSat + unlinkedRepairsCost;
+  const totalCashOut = totalMachineSpend + paidInvoicesValue + totalIvaPaidToSat + unlinkedRepairsCost;
   const netCashFlow = totalCashIn - totalCashOut;
 
   // CASH BOX MATH
@@ -155,7 +153,7 @@ export default function ERPPortal() {
     machine.serial_number.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // --- EXPORT TO EXCEL/CSV LOGIC ---
+  // --- EXPORT LOGIC ---
   const exportToCSV = (data: any[], filename: string) => {
     if (!data || data.length === 0) return;
     const headers = Object.keys(data[0]).join(',');
@@ -200,6 +198,7 @@ export default function ERPPortal() {
       Invoice_Number: inv.invoice_number,
       Total_Amount: inv.total_amount,
       IVA_Paid: inv.iva_amount,
+      Is_Paid: inv.is_paid ? 'Yes' : 'No',
       Notes: inv.notes
     }));
     exportToCSV(formattedData, `FineEdge_Invoices_${new Date().toISOString().split('T')[0]}`);
@@ -282,7 +281,6 @@ export default function ERPPortal() {
     e.stopPropagation();
     if (!isAdmin) return;
     const newStatus = !currentStatus;
-    
     setMachines((prev: any[]) => prev.map(m => m.id === machineId ? { ...m, is_paid: newStatus } : m));
     await supabase.from('inventory').update({ is_paid: newStatus }).eq('id', machineId);
   }
@@ -411,6 +409,14 @@ export default function ERPPortal() {
   }
 
   // --- PROVIDER & INVOICE LOGIC ---
+  async function handleToggleInvoicePaid(e: any, invoiceId: string, currentStatus: boolean) {
+    e.stopPropagation();
+    if (!isAdmin) return;
+    const newStatus = !currentStatus;
+    setInvoices((prev: any[]) => prev.map(inv => inv.id === invoiceId ? { ...inv, is_paid: newStatus } : inv));
+    await supabase.from('parts_invoices').update({ is_paid: newStatus }).eq('id', invoiceId);
+  }
+
   async function handleAddProvider(e: any) {
     e.preventDefault();
     if (!isAdmin) return;
@@ -439,10 +445,11 @@ export default function ERPPortal() {
       iva_amount: invoiceForm.no_factura ? 0 : (parseFloat(invoiceForm.iva_amount) || 0),
       invoice_date: invoiceForm.invoice_date || new Date().toISOString().split('T')[0], 
       notes: invoiceForm.notes, 
+      is_paid: invoiceForm.is_paid,
       file_url: fileUrl
     }]);
     setIsAddingInvoice(false); 
-    setInvoiceForm({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', notes: '', no_factura: false }); 
+    setInvoiceForm({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', notes: '', no_factura: false, is_paid: false }); 
     setInvoiceFile(null); 
     fetchProvidersAndInvoices();
     setIsUploadingInvoice(false);
@@ -459,7 +466,8 @@ export default function ERPPortal() {
       iva_amount: invoice.iva_amount || '',
       invoice_date: invoice.invoice_date || '',
       notes: invoice.notes || '',
-      no_factura: isSinFactura
+      no_factura: isSinFactura,
+      is_paid: invoice.is_paid || false
     });
   }
 
@@ -472,7 +480,8 @@ export default function ERPPortal() {
       total_amount: parseFloat(editInvoiceForm.total_amount) || 0,
       iva_amount: editInvoiceForm.no_factura ? 0 : (parseFloat(editInvoiceForm.iva_amount) || 0),
       invoice_date: editInvoiceForm.invoice_date,
-      notes: editInvoiceForm.notes
+      notes: editInvoiceForm.notes,
+      is_paid: editInvoiceForm.is_paid
     }).eq('id', editingInvoice.id);
     
     if (!error) {
@@ -650,13 +659,14 @@ export default function ERPPortal() {
             </div>
           </div>
 
+          {/* NET CASH FLOW WIDGET */}
           <div className={`flex-1 min-w-[200px] bg-white p-6 rounded-lg shadow border-l-4 ${netCashFlow >= 0 ? 'border-purple-500' : 'border-red-500'}`}>
             <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide mb-1">Net Cash Flow</h3>
             <p className={`text-3xl font-bold ${netCashFlow >= 0 ? 'text-purple-600' : 'text-red-600'}`}>{formatMXN(netCashFlow)}</p>
             <p className="text-xs text-gray-400 mt-1">Total in vs. Total out</p>
           </div>
 
-          {/* NEW CASH BOX WIDGET */}
+          {/* CASH BOX WIDGET */}
           <div className="flex-1 min-w-[200px] bg-white p-6 rounded-lg shadow border-l-4 border-green-800">
             <div className="flex justify-between items-start mb-1">
                <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide">Cash Box (Untaxed)</h3>
@@ -790,12 +800,12 @@ export default function ERPPortal() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-100 text-gray-700">
-                    <th className="p-3 border-b">Date</th><th className="p-3 border-b">Provider</th><th className="p-3 border-b">Inv / Ticket #</th><th className="p-3 border-b">Total Amount</th><th className="p-3 border-b">IVA Paid</th><th className="p-3 border-b">Receipt</th>
+                    <th className="p-3 border-b">Date</th><th className="p-3 border-b">Provider</th><th className="p-3 border-b">Inv / Ticket #</th><th className="p-3 border-b">Total Amount</th><th className="p-3 border-b">IVA Paid</th><th className="p-3 border-b">Receipt</th><th className="p-3 border-b">Status</th>
                     {isAdmin && <th className="p-3 border-b">Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {invoices.length === 0 ? <tr><td colSpan={isAdmin ? 7 : 6} className="p-4 text-center text-gray-500">No purchases logged yet.</td></tr> : (
+                  {invoices.length === 0 ? <tr><td colSpan={isAdmin ? 8 : 7} className="p-4 text-center text-gray-500">No purchases logged yet.</td></tr> : (
                     invoices.map((inv: any) => (
                       <tr key={inv.id} className="hover:bg-gray-50 border-b text-gray-800">
                         <td className="p-3">{inv.invoice_date}</td><td className="p-3 font-semibold">{inv.providers?.name || 'Unknown'}</td>
@@ -805,6 +815,15 @@ export default function ERPPortal() {
                         <td className="p-3 font-bold text-gray-800">{formatMXN(inv.total_amount)}</td>
                         <td className="p-3 text-red-600">{formatMXN(inv.iva_amount)}</td>
                         <td className="p-3">{inv.file_url ? <a href={inv.file_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-bold">View</a> : <span className="text-gray-400 text-sm">No file</span>}</td>
+                        <td className="p-3">
+                          <button 
+                            onClick={(e) => handleToggleInvoicePaid(e, inv.id, inv.is_paid)}
+                            disabled={!isAdmin}
+                            className={`px-2 py-1 rounded font-bold text-xs transition shadow-sm ${inv.is_paid ? 'bg-green-100 text-green-700 border border-green-300' : 'bg-yellow-100 text-yellow-700 border border-yellow-300'} ${!isAdmin && 'cursor-default'}`}
+                          >
+                            {inv.is_paid ? '✅ PAID' : '⏳ PENDING'}
+                          </button>
+                        </td>
                         {isAdmin && (
                           <td className="p-3">
                             <button onClick={() => openEditInvoiceModal(inv)} className="text-blue-600 hover:text-blue-800 text-sm font-bold bg-blue-50 px-2 py-1 rounded border border-blue-200">✏️ Edit</button>
@@ -913,6 +932,13 @@ export default function ERPPortal() {
                     <input required type="number" step="0.01" disabled={invoiceForm.no_factura} className="p-2 w-full border rounded text-black text-red-600 disabled:bg-gray-200 disabled:text-gray-500" value={invoiceForm.iva_amount} onChange={e => setInvoiceForm({...invoiceForm, iva_amount: e.target.value})} />
                   </div>
                 </div>
+                
+                {/* NEW: IS PAID CHECKBOX */}
+                <label className="flex items-center gap-2 mt-2 p-3 bg-gray-50 border rounded cursor-pointer hover:bg-gray-100">
+                  <input type="checkbox" className="w-5 h-5 text-green-600" checked={invoiceForm.is_paid} onChange={e => setInvoiceForm({...invoiceForm, is_paid: e.target.checked})} />
+                  <span className="text-sm font-bold text-gray-700">Payment Sent Immediately?</span>
+                </label>
+
                 <textarea placeholder="Notes / Items Bought" className="p-2 border rounded text-black h-20" value={invoiceForm.notes} onChange={e => setInvoiceForm({...invoiceForm, notes: e.target.value})} />
                 <input type="file" onChange={(e: any) => setInvoiceFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
                 <div className="flex justify-end gap-2 mt-4"><button type="button" onClick={() => setIsAddingInvoice(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button><button type="submit" disabled={isUploadingInvoice} className="px-4 py-2 bg-green-600 text-white rounded font-bold">Save Purchase</button></div>
@@ -957,6 +983,12 @@ export default function ERPPortal() {
                     <input required type="number" step="0.01" disabled={editInvoiceForm.no_factura} className="p-2 w-full border rounded text-black text-red-600 disabled:bg-gray-200 disabled:text-gray-500" value={editInvoiceForm.iva_amount} onChange={e => setEditInvoiceForm({...editInvoiceForm, iva_amount: e.target.value})} />
                   </div>
                 </div>
+
+                <label className="flex items-center gap-2 mt-2 p-3 bg-gray-50 border rounded cursor-pointer hover:bg-gray-100">
+                  <input type="checkbox" className="w-5 h-5 text-green-600" checked={editInvoiceForm.is_paid} onChange={e => setEditInvoiceForm({...editInvoiceForm, is_paid: e.target.checked})} />
+                  <span className="text-sm font-bold text-gray-700">Payment Sent Immediately?</span>
+                </label>
+
                 <textarea placeholder="Notes / Items Bought" className="p-2 border rounded text-black h-20" value={editInvoiceForm.notes} onChange={e => setEditInvoiceForm({...editInvoiceForm, notes: e.target.value})} />
                 
                 <div className="flex justify-end gap-2 mt-4"><button type="button" onClick={() => setEditingInvoice(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-700">Update Purchase</button></div>
