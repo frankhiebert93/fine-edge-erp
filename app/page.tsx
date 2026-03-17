@@ -13,7 +13,7 @@ export default function ERPPortal() {
 
   const handleAdminToggle = () => {
     if (isAdmin) {
-      setIsAdmin(false); // Lock it back
+      setIsAdmin(false); 
     } else {
       const pin = window.prompt("Enter Admin PIN to unlock editing:");
       // CHANGE THIS PIN RIGHT HERE:
@@ -28,13 +28,29 @@ export default function ERPPortal() {
   // --- HELPER: FILE SANITIZER ---
   const sanitizeFileName = (name: string) => name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
 
+  // --- HELPER: CALENDAR GENERATOR (.ICS) ---
+  const handleAddToCalendar = (e: any, title: string, date: string, description: string) => {
+    e.stopPropagation(); // Stops drag/drop from triggering
+    if (!date) return alert("Please set a due date first!");
+    
+    // Format date from YYYY-MM-DD to YYYYMMDD for the ICS file
+    const cleanDate = date.replace(/-/g, '');
+    
+    const icsContent = `BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nDTSTART;VALUE=DATE:${cleanDate}\nDTEND;VALUE=DATE:${cleanDate}\nSUMMARY:${title}\nDESCRIPTION:${description}\nEND:VEVENT\nEND:VCALENDAR`;
+    
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = window.URL.createObjectURL(blob);
+    link.download = `${sanitizeFileName(title)}.ics`;
+    link.click();
+  };
+
   // --- STATE: MACHINERY ---
   const [machines, setMachines] = useState<any[]>([]);  
   const [isAdding, setIsAdding] = useState(false);
   const [selectedMachine, setSelectedMachine] = useState<any>(null);
   const [specSheetMachine, setSpecSheetMachine] = useState<any>(null); 
 
-  // Add & Edit Forms (Machinery)
   const [formData, setFormData] = useState({ machine_name: '', serial_number: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '' });
   const [editingMachine, setEditingMachine] = useState<any>(null);
   const [editFormData, setEditFormData] = useState<any>({ machine_name: '', serial_number: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '', invoice_date: '', due_date: '' });
@@ -44,7 +60,6 @@ export default function ERPPortal() {
   const [pedimentoFile, setPedimentoFile] = useState<any>(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  // --- STATE: SELLING A MACHINE ---
   const [sellingMachine, setSellingMachine] = useState<any>(null);
   const [sellForm, setSellForm] = useState({ sale_price: '', sale_iva: '', is_paid: false, invoice_date: '', due_date: '' });
   const [saleInvoiceFile, setSaleInvoiceFile] = useState<any>(null);
@@ -56,12 +71,12 @@ export default function ERPPortal() {
   const [isAddingInvoice, setIsAddingInvoice] = useState(false);
   const [providerForm, setProviderForm] = useState({ name: '', contact_info: '', notes: '' });
   
-  const [invoiceForm, setInvoiceForm] = useState({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', notes: '', no_factura: false, is_paid: false });
+  const [invoiceForm, setInvoiceForm] = useState({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', due_date: '', notes: '', no_factura: false, is_paid: false });
   const [invoiceFile, setInvoiceFile] = useState<any>(null);
   const [isUploadingInvoice, setIsUploadingInvoice] = useState(false);
 
   const [editingInvoice, setEditingInvoice] = useState<any>(null);
-  const [editInvoiceForm, setEditInvoiceForm] = useState<any>({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', notes: '', no_factura: false, is_paid: false });
+  const [editInvoiceForm, setEditInvoiceForm] = useState<any>({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', due_date: '', notes: '', no_factura: false, is_paid: false });
 
   // --- STATE: SAT PAYMENTS ---
   const [satPayments, setSatPayments] = useState<any[]>([]);
@@ -126,12 +141,11 @@ export default function ERPPortal() {
   const soldMachines = machines.filter((m: any) => m.status === 'Sold');
   
   const currentInventoryValue = inShopMachines.reduce((total: any, m: any) => total + calculateTotalCost(m), 0);
-  const totalInvoicesValue = invoices.reduce((total: any, inv: any) => total + Number(inv.total_amount), 0); // Show all accrued expenses
+  const totalInvoicesValue = invoices.reduce((total: any, inv: any) => total + Number(inv.total_amount), 0); 
   
-  // Realized profit stays as total sold (accrual accounting to see if business model is profitable)
   const netProfit = soldMachines.reduce((total: any, m: any) => total + (Number(m.sale_price) - calculateTotalCost(m)), 0);
 
-  // IVA Math (CASH BASIS - Only counts paid invoices and paid sales)
+  // IVA Math
   const totalIvaPaid = machines.reduce((sum: any, m: any) => sum + Number(m.purchase_iva || 0), 0) + 
                        invoices.filter((inv:any) => inv.is_paid).reduce((sum: any, inv: any) => sum + Number(inv.iva_amount || 0), 0);
   const totalIvaCollected = soldMachines.filter((m:any) => m.is_paid).reduce((sum: any, m: any) => sum + Number(m.sale_iva || 0), 0);
@@ -140,7 +154,7 @@ export default function ERPPortal() {
   const totalIvaPaidToSat = satPayments.reduce((sum: any, p: any) => sum + Number(p.amount), 0);
   const currentIvaOwed = grossIvaBalance - totalIvaPaidToSat;
 
-  // CASH FLOW MATH (CASH BASIS - Only counts money actually in the bank)
+  // CASH FLOW MATH 
   const totalCashIn = soldMachines.filter((m:any) => m.is_paid).reduce((sum: any, m: any) => sum + Number(m.sale_price) + Number(m.sale_iva || 0), 0);
   const paidInvoicesValue = invoices.filter((inv:any) => inv.is_paid).reduce((sum: any, inv: any) => sum + Number(inv.total_amount), 0);
   const totalMachineSpend = machines.reduce((sum: any, m: any) => sum + Number(m.purchase_price) + Number(m.purchase_iva || 0) + Number(m.shipping_in_cost) + Number(m.import_fee || 0), 0);
@@ -202,6 +216,7 @@ export default function ERPPortal() {
       Total_Amount: inv.total_amount,
       IVA_Paid: inv.iva_amount,
       Is_Paid: inv.is_paid ? 'Yes' : 'No',
+      Payment_Due: inv.due_date || '',
       Notes: inv.notes
     }));
     exportToCSV(formattedData, `FineEdge_Invoices_${new Date().toISOString().split('T')[0]}`);
@@ -230,8 +245,10 @@ export default function ERPPortal() {
     await supabase.from('inventory').update({ status: newStatus, sale_price: 0, sale_iva: 0, is_paid: false, invoice_date: null, due_date: null }).eq('id', machineId);
   };
 
-  const handleInvoiceDateChange = (e: any) => {
+  const handleInvoiceDateChange = (e: any, target: 'sellForm' | 'invoiceForm' | 'editInvoiceForm') => {
     const invDate = e.target.value;
+    let newDueDate = '';
+    
     if (invDate) {
       const [year, month, day] = invDate.split('-');
       const dateObj = new Date(Number(year), Number(month) - 1, Number(day));
@@ -239,10 +256,12 @@ export default function ERPPortal() {
       const y = dateObj.getFullYear();
       const m = String(dateObj.getMonth() + 1).padStart(2, '0');
       const d = String(dateObj.getDate()).padStart(2, '0');
-      setSellForm({...sellForm, invoice_date: invDate, due_date: `${y}-${m}-${d}`});
-    } else {
-      setSellForm({...sellForm, invoice_date: invDate, due_date: ''});
+      newDueDate = `${y}-${m}-${d}`;
     }
+
+    if (target === 'sellForm') setSellForm({...sellForm, invoice_date: invDate, due_date: newDueDate});
+    if (target === 'invoiceForm') setInvoiceForm({...invoiceForm, invoice_date: invDate, due_date: newDueDate});
+    if (target === 'editInvoiceForm') setEditInvoiceForm({...editInvoiceForm, invoice_date: invDate, due_date: newDueDate});
   };
 
   async function handleSellMachine(e: any) {
@@ -284,7 +303,6 @@ export default function ERPPortal() {
     e.stopPropagation();
     if (!isAdmin) return;
     const newStatus = !currentStatus;
-    
     setMachines((prev: any[]) => prev.map(m => m.id === machineId ? { ...m, is_paid: newStatus } : m));
     await supabase.from('inventory').update({ is_paid: newStatus }).eq('id', machineId);
   }
@@ -448,12 +466,13 @@ export default function ERPPortal() {
       total_amount: parseFloat(invoiceForm.total_amount) || 0, 
       iva_amount: invoiceForm.no_factura ? 0 : (parseFloat(invoiceForm.iva_amount) || 0),
       invoice_date: invoiceForm.invoice_date || new Date().toISOString().split('T')[0], 
+      due_date: invoiceForm.due_date || null,
       notes: invoiceForm.notes, 
       is_paid: invoiceForm.is_paid,
       file_url: fileUrl
     }]);
     setIsAddingInvoice(false); 
-    setInvoiceForm({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', notes: '', no_factura: false, is_paid: false }); 
+    setInvoiceForm({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', due_date: '', notes: '', no_factura: false, is_paid: false }); 
     setInvoiceFile(null); 
     fetchProvidersAndInvoices();
     setIsUploadingInvoice(false);
@@ -462,7 +481,7 @@ export default function ERPPortal() {
   function openEditInvoiceModal(invoice: any) {
     if (!isAdmin) return;
     setEditingInvoice(invoice);
-    setInvoiceFile(null); // Clear any old file selection
+    setInvoiceFile(null); 
     const isSinFactura = invoice.invoice_number === 'Sin Factura';
     setEditInvoiceForm({
       provider_id: invoice.provider_id || '',
@@ -470,6 +489,7 @@ export default function ERPPortal() {
       total_amount: invoice.total_amount || '',
       iva_amount: invoice.iva_amount || '',
       invoice_date: invoice.invoice_date || '',
+      due_date: invoice.due_date || '',
       notes: invoice.notes || '',
       no_factura: isSinFactura,
       is_paid: invoice.is_paid || false
@@ -482,7 +502,6 @@ export default function ERPPortal() {
     setIsUploadingInvoice(true);
     let fileUrl = editingInvoice.file_url;
 
-    // Check if user selected a new file to replace the old one
     if (invoiceFile) {
       const fileName = `inv-${Date.now()}-${sanitizeFileName(invoiceFile.name)}`;
       const { error: uploadError } = await supabase.storage.from('invoices').upload(fileName, invoiceFile);
@@ -499,6 +518,7 @@ export default function ERPPortal() {
       total_amount: parseFloat(editInvoiceForm.total_amount) || 0,
       iva_amount: editInvoiceForm.no_factura ? 0 : (parseFloat(editInvoiceForm.iva_amount) || 0),
       invoice_date: editInvoiceForm.invoice_date,
+      due_date: editInvoiceForm.due_date || null,
       notes: editInvoiceForm.notes,
       is_paid: editInvoiceForm.is_paid,
       file_url: fileUrl
@@ -524,9 +544,8 @@ export default function ERPPortal() {
     if (satReceiptFile) {
       const fileName = `sat-${Date.now()}-${sanitizeFileName(satReceiptFile.name)}`;
       const { error: uploadError } = await supabase.storage.from('invoices').upload(fileName, satReceiptFile);
-      
       if (uploadError) {
-        alert(`Upload Failed: ${uploadError.message}. The payment was not saved. Check the file format.`);
+        alert(`Upload Failed: ${uploadError.message}.`);
         setIsUploadingSat(false);
         return; 
       }
@@ -756,9 +775,19 @@ export default function ERPPortal() {
                              
                              {/* AR TRACKER: Only shows if Pending and dates exist */}
                              {!machine.is_paid && (machine.invoice_date || machine.due_date) && (
-                               <div className="mt-2 mb-2 bg-yellow-50 border border-yellow-200 p-2 rounded text-xs">
-                                 <span className="font-bold text-gray-700">Inv Sent:</span> {machine.invoice_date || 'N/A'} <br/>
-                                 <span className="font-bold text-gray-700">Due Date:</span> <span className={isOverdue ? 'text-red-600 font-extrabold' : 'text-gray-800 font-bold'}>{machine.due_date || 'N/A'} {isOverdue && '(OVERDUE)'}</span>
+                               <div className="mt-2 mb-2 bg-yellow-50 border border-yellow-200 p-2 rounded text-xs flex justify-between items-center">
+                                 <div>
+                                   <span className="font-bold text-gray-700">Inv Sent:</span> {machine.invoice_date || 'N/A'} <br/>
+                                   <span className="font-bold text-gray-700">Due Date:</span> <span className={isOverdue ? 'text-red-600 font-extrabold' : 'text-gray-800 font-bold'}>{machine.due_date || 'N/A'} {isOverdue && '(OVERDUE)'}</span>
+                                 </div>
+                                 {machine.due_date && (
+                                   <button 
+                                     onClick={(e) => handleAddToCalendar(e, `Payment Due: ${machine.machine_name}`, machine.due_date, `Expected Amount: ${formatMXN(machine.sale_price)}`)} 
+                                     className="text-xl hover:scale-110 transition pr-2" 
+                                     title="Add to Calendar">
+                                     📅
+                                   </button>
+                                 )}
                                </div>
                              )}
 
@@ -824,15 +853,35 @@ export default function ERPPortal() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-100 text-gray-700">
-                    <th className="p-3 border-b">Date</th><th className="p-3 border-b">Provider</th><th className="p-3 border-b">Inv / Ticket #</th><th className="p-3 border-b">Total Amount</th><th className="p-3 border-b">IVA Paid</th><th className="p-3 border-b">Receipt</th><th className="p-3 border-b">Status</th>
+                    <th className="p-3 border-b">Inv Date</th><th className="p-3 border-b">Due Date</th><th className="p-3 border-b">Provider</th><th className="p-3 border-b">Inv / Ticket #</th><th className="p-3 border-b">Total Amount</th><th className="p-3 border-b">IVA Paid</th><th className="p-3 border-b">Receipt</th><th className="p-3 border-b">Status</th>
                     {isAdmin && <th className="p-3 border-b">Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {invoices.length === 0 ? <tr><td colSpan={isAdmin ? 8 : 7} className="p-4 text-center text-gray-500">No purchases logged yet.</td></tr> : (
-                    invoices.map((inv: any) => (
+                  {invoices.length === 0 ? <tr><td colSpan={isAdmin ? 9 : 8} className="p-4 text-center text-gray-500">No purchases logged yet.</td></tr> : (
+                    invoices.map((inv: any) => {
+                      const isOverdue = inv.due_date ? (new Date(inv.due_date) < new Date()) : false;
+                      return (
                       <tr key={inv.id} className="hover:bg-gray-50 border-b text-gray-800">
-                        <td className="p-3">{inv.invoice_date}</td><td className="p-3 font-semibold">{inv.providers?.name || 'Unknown'}</td>
+                        <td className="p-3 text-sm">{inv.invoice_date}</td>
+                        
+                        <td className="p-3 text-sm">
+                          {inv.due_date ? (
+                            <div className="flex items-center gap-2">
+                              <span className={isOverdue && !inv.is_paid ? 'text-red-600 font-bold' : ''}>{inv.due_date}</span>
+                              {!inv.is_paid && (
+                                <button 
+                                  onClick={(e) => handleAddToCalendar(e, `Pay Invoice: ${inv.providers?.name || 'Supplier'}`, inv.due_date, `Invoice #: ${inv.invoice_number} | Amount: ${formatMXN(inv.total_amount)}`)} 
+                                  className="text-lg hover:scale-110 transition" 
+                                  title="Add to Calendar">
+                                  📅
+                                </button>
+                              )}
+                            </div>
+                          ) : <span className="text-gray-400">N/A</span>}
+                        </td>
+
+                        <td className="p-3 font-semibold">{inv.providers?.name || 'Unknown'}</td>
                         <td className="p-3">
                            {inv.invoice_number === 'Sin Factura' ? <span className="bg-gray-200 text-gray-600 px-2 py-1 rounded text-xs font-bold">Sin Factura</span> : inv.invoice_number}
                         </td>
@@ -854,7 +903,7 @@ export default function ERPPortal() {
                           </td>
                         )}
                       </tr>
-                    ))
+                    )})
                   )}
                 </tbody>
               </table>
@@ -939,10 +988,22 @@ export default function ERPPortal() {
                   <option value="">Select a provider...</option>
                   {providers.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
+                
                 <div className="flex gap-4">
-                  <input type="text" placeholder="Invoice / Ticket #" disabled={invoiceForm.no_factura} className="p-2 w-1/2 border rounded text-black disabled:bg-gray-200 disabled:text-gray-500" value={invoiceForm.invoice_number} onChange={e => setInvoiceForm({...invoiceForm, invoice_number: e.target.value})} />
-                  <input required type="date" className="p-2 w-1/2 border rounded text-black" value={invoiceForm.invoice_date} onChange={e => setInvoiceForm({...invoiceForm, invoice_date: e.target.value})} />
+                  <div className="w-1/3">
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Inv / Ticket #</label>
+                    <input type="text" disabled={invoiceForm.no_factura} className="p-2 w-full border rounded text-black disabled:bg-gray-200 disabled:text-gray-500" value={invoiceForm.invoice_number} onChange={e => setInvoiceForm({...invoiceForm, invoice_number: e.target.value})} />
+                  </div>
+                  <div className="w-1/3">
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Invoice Date</label>
+                    <input required type="date" className="p-2 w-full border rounded text-black" value={invoiceForm.invoice_date} onChange={e => handleInvoiceDateChange(e, 'invoiceForm')} />
+                  </div>
+                  <div className="w-1/3">
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Due Date</label>
+                    <input type="date" className="p-2 w-full border rounded text-black" value={invoiceForm.due_date} onChange={e => setInvoiceForm({...invoiceForm, due_date: e.target.value})} />
+                  </div>
                 </div>
+
                 <div className="flex gap-4 items-end">
                   <div className="w-1/2">
                     <label className="block text-xs font-bold text-gray-500 uppercase">{invoiceForm.no_factura ? 'Total Paid' : 'Subtotal / Total'}</label>
@@ -989,10 +1050,22 @@ export default function ERPPortal() {
                   <option value="">Select a provider...</option>
                   {providers.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
+                
                 <div className="flex gap-4">
-                  <input type="text" placeholder="Invoice / Ticket #" disabled={editInvoiceForm.no_factura} className="p-2 w-1/2 border rounded text-black disabled:bg-gray-200 disabled:text-gray-500" value={editInvoiceForm.invoice_number} onChange={e => setEditInvoiceForm({...editInvoiceForm, invoice_number: e.target.value})} />
-                  <input required type="date" className="p-2 w-1/2 border rounded text-black" value={editInvoiceForm.invoice_date} onChange={e => setEditInvoiceForm({...editInvoiceForm, invoice_date: e.target.value})} />
+                  <div className="w-1/3">
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Inv / Ticket #</label>
+                    <input type="text" disabled={editInvoiceForm.no_factura} className="p-2 w-full border rounded text-black disabled:bg-gray-200 disabled:text-gray-500" value={editInvoiceForm.invoice_number} onChange={e => setEditInvoiceForm({...editInvoiceForm, invoice_number: e.target.value})} />
+                  </div>
+                  <div className="w-1/3">
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Invoice Date</label>
+                    <input required type="date" className="p-2 w-full border rounded text-black" value={editInvoiceForm.invoice_date} onChange={e => handleInvoiceDateChange(e, 'editInvoiceForm')} />
+                  </div>
+                  <div className="w-1/3">
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Due Date</label>
+                    <input type="date" className="p-2 w-full border rounded text-black" value={editInvoiceForm.due_date} onChange={e => setEditInvoiceForm({...editInvoiceForm, due_date: e.target.value})} />
+                  </div>
                 </div>
+
                 <div className="flex gap-4 items-end">
                   <div className="w-1/2">
                     <label className="block text-xs font-bold text-gray-500 uppercase">{editInvoiceForm.no_factura ? 'Total Paid' : 'Subtotal / Total'}</label>
@@ -1014,7 +1087,6 @@ export default function ERPPortal() {
 
                 <textarea placeholder="Notes / Items Bought" className="p-2 border rounded text-black h-20" value={editInvoiceForm.notes} onChange={e => setEditInvoiceForm({...editInvoiceForm, notes: e.target.value})} />
                 
-                {/* NEW: Upload/Replace Receipt */}
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Upload/Replace Receipt</label>
                   <input type="file" accept=".pdf,image/*" onChange={(e: any) => setInvoiceFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
@@ -1119,7 +1191,7 @@ export default function ERPPortal() {
                 <div className="flex gap-4 mt-2">
                   <div className="w-1/2">
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Invoice Sent Date</label>
-                    <input type="date" className="w-full p-2 border rounded text-black" value={sellForm.invoice_date} onChange={handleInvoiceDateChange} />
+                    <input type="date" className="w-full p-2 border rounded text-black" value={sellForm.invoice_date} onChange={e => handleInvoiceDateChange(e, 'sellForm')} />
                   </div>
                   <div className="w-1/2">
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Due Date</label>
