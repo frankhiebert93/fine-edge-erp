@@ -30,12 +30,10 @@ export default function ERPPortal() {
 
   // --- HELPER: CALENDAR GENERATOR (.ICS) ---
   const handleAddToCalendar = (e: any, title: string, date: string, description: string) => {
-    e.stopPropagation(); // Stops drag/drop from triggering
+    e.stopPropagation(); 
     if (!date) return alert("Please set a due date first!");
     
-    // Format date from YYYY-MM-DD to YYYYMMDD for the ICS file
     const cleanDate = date.replace(/-/g, '');
-    
     const icsContent = `BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nDTSTART;VALUE=DATE:${cleanDate}\nDTEND;VALUE=DATE:${cleanDate}\nSUMMARY:${title}\nDESCRIPTION:${description}\nEND:VEVENT\nEND:VCALENDAR`;
     
     const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
@@ -94,6 +92,7 @@ export default function ERPPortal() {
   // --- STATE: CASH BOX ---
   const [cashBoxLogs, setCashBoxLogs] = useState<any[]>([]);
   const [isAddingCash, setIsAddingCash] = useState(false);
+  const [showCashHistory, setShowCashHistory] = useState(false);
   const [cashForm, setCashForm] = useState({ amount: '', notes: '', date: '' });
 
   useEffect(() => {
@@ -303,6 +302,7 @@ export default function ERPPortal() {
     e.stopPropagation();
     if (!isAdmin) return;
     const newStatus = !currentStatus;
+    
     setMachines((prev: any[]) => prev.map(m => m.id === machineId ? { ...m, is_paid: newStatus } : m));
     await supabase.from('inventory').update({ is_paid: newStatus }).eq('id', machineId);
   }
@@ -544,8 +544,9 @@ export default function ERPPortal() {
     if (satReceiptFile) {
       const fileName = `sat-${Date.now()}-${sanitizeFileName(satReceiptFile.name)}`;
       const { error: uploadError } = await supabase.storage.from('invoices').upload(fileName, satReceiptFile);
+      
       if (uploadError) {
-        alert(`Upload Failed: ${uploadError.message}.`);
+        alert(`Upload Failed: ${uploadError.message}. The payment was not saved. Check the file format.`);
         setIsUploadingSat(false);
         return; 
       }
@@ -714,7 +715,10 @@ export default function ERPPortal() {
             <div className="flex justify-between items-start mb-1">
                <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide">Cash Box (Untaxed)</h3>
                {isAdmin && (
-                 <button onClick={() => setIsAddingCash(true)} className="text-xs bg-gray-100 text-gray-700 hover:bg-gray-200 font-bold px-2 py-1 rounded border border-gray-300 transition shadow-sm">+/- Log</button>
+                 <div className="flex gap-2">
+                   <button onClick={() => setShowCashHistory(true)} className="text-xs bg-gray-100 text-gray-700 hover:bg-gray-200 font-bold px-2 py-1 rounded border border-gray-300 transition shadow-sm">📜 History</button>
+                   <button onClick={() => setIsAddingCash(true)} className="text-xs bg-gray-100 text-gray-700 hover:bg-gray-200 font-bold px-2 py-1 rounded border border-gray-300 transition shadow-sm">+/- Log</button>
+                 </div>
                )}
             </div>
             <p className="text-3xl font-bold text-green-800">{formatMXN(cashBoxTotal)}</p>
@@ -946,6 +950,42 @@ export default function ERPPortal() {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* --- CASH BOX HISTORY MODAL --- */}
+        {showCashHistory && isAdmin && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-lg shadow-xl border-t-8 border-green-800 flex flex-col max-h-[90vh]">
+              <div className="flex justify-between items-start mb-4">
+                <h2 className="text-2xl font-bold text-gray-800">Cash Box History</h2>
+                <button onClick={() => setShowCashHistory(false)} className="text-gray-500 hover:text-red-500 text-2xl font-bold">&times;</button>
+              </div>
+              <div className="bg-gray-100 p-4 rounded mb-4 flex justify-between text-lg">
+                <span className="font-semibold text-gray-700">Current Balance:</span>
+                <span className="font-bold text-green-800">{formatMXN(cashBoxTotal)}</span>
+              </div>
+              <div className="overflow-y-auto mb-2 flex-grow">
+                {cashBoxLogs.length === 0 ? <p className="text-gray-500 text-sm italic">No cash logged yet.</p> : (
+                  <ul className="flex flex-col gap-2">
+                    {[...cashBoxLogs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((log: any) => (
+                      <li key={log.id} className="flex justify-between items-center bg-gray-50 p-3 border rounded text-black">
+                        <div className="flex flex-col">
+                          <span className="text-xs text-gray-500 font-bold">{log.date}</span>
+                          <span className="font-semibold text-sm">{log.notes || 'No notes'}</span>
+                        </div>
+                        <span className={`font-bold ${Number(log.amount) >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                          {Number(log.amount) >= 0 ? '+' : ''}{formatMXN(Number(log.amount))}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="flex justify-end mt-4 pt-4 border-t">
+                <button onClick={() => setShowCashHistory(false)} className="px-6 py-2 bg-gray-200 text-gray-700 font-bold rounded hover:bg-gray-300">Close</button>
+              </div>
             </div>
           </div>
         )}
