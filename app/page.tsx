@@ -237,9 +237,13 @@ export default function Storefront() {
                     <p className="font-bold text-gray-800">Sales & Freight Inquiries:</p>
                     <p className="text-gray-600 font-mono">fineedgemachines@gmail.com</p>
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs text-gray-400 font-bold uppercase">Scan to contact</p>
-                    <div className="w-16 h-16 bg-gray-200 border border-gray-300 flex items-center justify-center text-xs text-gray-400 mt-1">QR</div>
+                  <div className="text-right flex flex-col items-end">
+                    <p className="text-xs text-gray-400 font-bold uppercase mb-1">Scan to WhatsApp</p>
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent('https://wa.me/' + WHATSAPP_NUMBER)}`} 
+                      alt="WhatsApp QR Code" 
+                      className="w-16 h-16 border border-gray-300 rounded shadow-sm"
+                    />
                   </div>
                 </div>
               </div>
