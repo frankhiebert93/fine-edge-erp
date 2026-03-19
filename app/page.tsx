@@ -6,6 +6,7 @@ export default function Storefront() {
   const [machines, setMachines] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeCategory, setActiveCategory] = useState('All');
   const [specSheetMachine, setSpecSheetMachine] = useState<any>(null);
 
   // --- YOUR OFFICIAL BUSINESS WHATSAPP NUMBER ---
@@ -18,7 +19,7 @@ export default function Storefront() {
   async function fetchReadyMachines() {
     const { data, error } = await supabase
       .from('inventory')
-      .select('id, machine_name, serial_number, image_url, video_url')
+      .select('id, machine_name, serial_number, image_url, video_url, category')
       .eq('status', 'Ready')
       .order('machine_name', { ascending: true });
       
@@ -26,10 +27,16 @@ export default function Storefront() {
     setLoading(false);
   }
 
-  const filteredMachines = machines.filter(m => 
-    m.machine_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    m.serial_number.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Auto-generate filter buttons based on what is actually in stock
+  const dynamicCategories = ['All', ...Array.from(new Set(machines.map(m => m.category || 'Other')))];
+
+  const filteredMachines = machines.filter(m => {
+    const matchesSearch = m.machine_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          m.serial_number.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = activeCategory === 'All' || (m.category || 'Other') === activeCategory;
+    
+    return matchesSearch && matchesCategory;
+  });
 
   return (
     <>
@@ -93,7 +100,7 @@ export default function Storefront() {
 
         {/* INVENTORY SECTION */}
         <main id="inventory" className="max-w-6xl mx-auto px-6 py-16">
-          <div className="flex flex-col md:flex-row justify-between items-center mb-10 bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-4 rounded-lg shadow-sm border border-gray-200">
             <div>
               <h2 className="text-3xl font-extrabold text-gray-800">Ready to Ship</h2>
               <p className="text-gray-500 font-semibold">{filteredMachines.length} Machines Available</p>
@@ -107,6 +114,23 @@ export default function Storefront() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+          </div>
+
+          {/* DYNAMIC CATEGORY BUTTONS */}
+          <div className="flex gap-3 overflow-x-auto pb-6 mb-4 hide-scrollbar">
+            {dynamicCategories.map((cat: any) => (
+              <button 
+                key={cat}
+                onClick={() => setActiveCategory(cat)}
+                className={`px-6 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-all shadow-sm border ${
+                  activeCategory === cat 
+                    ? 'bg-blue-600 text-white border-blue-700' 
+                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100 hover:text-gray-900'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
           </div>
 
           {loading ? (
@@ -135,6 +159,11 @@ export default function Storefront() {
                       <div className="absolute top-4 right-4 bg-green-600 text-white text-xs font-bold px-3 py-1 rounded shadow-md border border-green-500 tracking-wide">
                         IN STOCK
                       </div>
+                      {machine.category && machine.category !== 'Other' && (
+                        <div className="absolute top-4 left-4 bg-gray-900 bg-opacity-75 text-white text-xs font-bold px-3 py-1 rounded tracking-wide backdrop-blur-sm">
+                          {machine.category}
+                        </div>
+                      )}
                     </div>
 
                     <div className="p-6 flex-grow flex flex-col">
@@ -222,6 +251,9 @@ export default function Storefront() {
                 <div className="mb-6">
                   <h2 className="text-3xl font-bold text-gray-900 mb-2">{specSheetMachine.machine_name}</h2>
                   <p className="text-xl text-gray-600 font-mono bg-gray-100 inline-block px-3 py-1 rounded">S/N: {specSheetMachine.serial_number}</p>
+                  {specSheetMachine.category && specSheetMachine.category !== 'Other' && (
+                    <p className="mt-2 text-sm font-bold text-blue-600 uppercase tracking-wide">{specSheetMachine.category}</p>
+                  )}
                 </div>
                 <div className="bg-blue-50 border border-blue-100 p-6 rounded-lg mb-6 flex-grow">
                   <h3 className="text-lg font-bold text-blue-900 border-b border-blue-200 pb-2 mb-4">Inspection & Certification</h3>
