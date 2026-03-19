@@ -46,9 +46,10 @@ export default function ERPPortal() {
   const [selectedMachine, setSelectedMachine] = useState<any>(null);
   const [specSheetMachine, setSpecSheetMachine] = useState<any>(null); 
 
-  const [formData, setFormData] = useState({ machine_name: '', serial_number: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '', video_url: '' });
+  // ADDED CATEGORY FIELD HERE
+  const [formData, setFormData] = useState({ machine_name: '', serial_number: '', category: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '', video_url: '' });
   const [editingMachine, setEditingMachine] = useState<any>(null);
-  const [editFormData, setEditFormData] = useState<any>({ machine_name: '', serial_number: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '', invoice_date: '', due_date: '', video_url: '' });
+  const [editFormData, setEditFormData] = useState<any>({ machine_name: '', serial_number: '', category: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '', invoice_date: '', due_date: '', video_url: '' });
   
   const [repairForm, setRepairForm] = useState({ item_description: '', part_cost: '', labor_hours: '', invoice_id: '' });
   const [imageFile, setImageFile] = useState<any>(null);
@@ -159,7 +160,7 @@ export default function ERPPortal() {
     machine.serial_number.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // --- EXPORT LOGIC (THIS WAS THE MISSING PIECE!) ---
+  // --- EXPORT LOGIC ---
   const exportToCSV = (data: any[], filename: string) => {
     if (!data || data.length === 0) return;
     const headers = Object.keys(data[0]).join(',');
@@ -180,6 +181,7 @@ export default function ERPPortal() {
   const exportMachines = () => {
     const formattedData = machines.map((m: any) => ({
       Machine_Name: m.machine_name,
+      Category: m.category || 'Other',
       Serial_Number: m.serial_number,
       Status: m.status,
       Paid_By_Customer: m.is_paid ? 'Yes' : 'No',
@@ -301,7 +303,7 @@ export default function ERPPortal() {
     }
 
     const { error } = await supabase.from('inventory').insert([{
-      machine_name: formData.machine_name, serial_number: formData.serial_number,
+      machine_name: formData.machine_name, serial_number: formData.serial_number, category: formData.category || 'Other',
       purchase_price: parseFloat(formData.purchase_price) || 0, purchase_iva: parseFloat(formData.purchase_iva) || 0, 
       shipping_in_cost: parseFloat(formData.shipping_in_cost) || 0, import_fee: parseFloat(formData.import_fee) || 0,
       video_url: formData.video_url || null, status: 'Intake', image_url: imageUrl, pedimento_url: pedimentoUrl, is_paid: false
@@ -309,7 +311,7 @@ export default function ERPPortal() {
 
     if (!error) { 
       setIsAdding(false); 
-      setFormData({ machine_name: '', serial_number: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '', video_url: '' }); 
+      setFormData({ machine_name: '', serial_number: '', category: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '', video_url: '' }); 
       setImageFile(null); setPedimentoFile(null); fetchInventory(); 
     } else {
       alert("Database error: " + error.message);
@@ -321,11 +323,10 @@ export default function ERPPortal() {
     if (!isAdmin) return;
     setEditingMachine(machine);
     setEditFormData({
-      machine_name: machine.machine_name || '', serial_number: machine.serial_number || '',
+      machine_name: machine.machine_name || '', serial_number: machine.serial_number || '', category: machine.category || '',
       purchase_price: machine.purchase_price || '', purchase_iva: machine.purchase_iva || '',
       shipping_in_cost: machine.shipping_in_cost || '', import_fee: machine.import_fee || '',
-      invoice_date: machine.invoice_date || '', due_date: machine.due_date || '',
-      video_url: machine.video_url || ''
+      invoice_date: machine.invoice_date || '', due_date: machine.due_date || '', video_url: machine.video_url || ''
     });
   }
 
@@ -342,7 +343,7 @@ export default function ERPPortal() {
     }
 
     const payload: any = {
-      machine_name: editFormData.machine_name, serial_number: editFormData.serial_number,
+      machine_name: editFormData.machine_name, serial_number: editFormData.serial_number, category: editFormData.category || 'Other',
       purchase_price: parseFloat(editFormData.purchase_price) || 0, purchase_iva: parseFloat(editFormData.purchase_iva) || 0,
       shipping_in_cost: parseFloat(editFormData.shipping_in_cost) || 0, import_fee: parseFloat(editFormData.import_fee) || 0,
       video_url: editFormData.video_url || null, pedimento_url: pedimentoUrl
@@ -589,6 +590,11 @@ export default function ERPPortal() {
                       <div key={machine.id} draggable={isAdmin} onDragStart={(e) => handleDragStart(e, machine.id)} onClick={() => setSelectedMachine(machine)} className={`bg-white p-4 rounded shadow ${isAdmin ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} border-l-4 border-blue-500 hover:shadow-lg transition transform hover:-translate-y-1`}>
                         {machine.image_url && <img src={machine.image_url} alt="Machine" className="w-full h-40 object-cover rounded mb-3 border" />}
                         <h3 className="font-bold text-gray-800">{machine.machine_name}</h3>
+                        
+                        {/* Display Category Badge in Kanban */}
+                        {machine.category && machine.category !== 'Other' && (
+                          <span className="inline-block bg-gray-200 text-gray-700 text-xs px-2 py-1 rounded font-bold mt-1 mb-2">{machine.category}</span>
+                        )}
                         <p className="text-sm text-gray-500 mb-2">SN: {machine.serial_number}</p>
                         
                         {/* Video Indicator */}
@@ -599,7 +605,7 @@ export default function ERPPortal() {
                         )}
 
                         {machine.status === 'Sold' && (
-                           <div className="bg-gray-50 border p-2 rounded text-xs mb-2">
+                           <div className="bg-gray-50 border p-2 rounded text-xs mb-2 mt-2">
                              <span className="font-bold text-gray-700">Sold for:</span> {formatMXN(machine.sale_price)} <br/> 
                              <span className="font-bold text-gray-700">IVA:</span> {formatMXN(machine.sale_iva)} <br/>
                              
@@ -664,8 +670,11 @@ export default function ERPPortal() {
                   </div>
 
                   <input required placeholder="Machine Name" className="p-2 border rounded text-black" value={formData.machine_name} onChange={e => setFormData({...formData, machine_name: e.target.value})} />
-                  <input required placeholder="Serial Number" className="p-2 border rounded text-black" value={formData.serial_number} onChange={e => setFormData({...formData, serial_number: e.target.value})} />
                   
+                  {/* NEW CATEGORY INPUT */}
+                  <input required placeholder="Category (e.g., Laser, CNC, Welder)" className="p-2 border rounded text-black bg-gray-50 font-semibold" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} />
+                  
+                  <input required placeholder="Serial Number" className="p-2 border rounded text-black" value={formData.serial_number} onChange={e => setFormData({...formData, serial_number: e.target.value})} />
                   <input type="url" placeholder="YouTube/Drive Video Link (Optional)" className="p-2 border rounded text-black" value={formData.video_url} onChange={e => setFormData({...formData, video_url: e.target.value})} />
 
                   <div className="flex gap-4">
@@ -706,8 +715,11 @@ export default function ERPPortal() {
                <h2 className="text-2xl font-bold mb-4 text-gray-800">Edit Machine Details</h2>
                <form onSubmit={handleUpdateMachine} className="flex flex-col gap-4">
                   <input required placeholder="Machine Name" className="p-2 border rounded text-black" value={editFormData.machine_name} onChange={e => setEditFormData({...editFormData, machine_name: e.target.value})} />
-                  <input required placeholder="Serial Number" className="p-2 border rounded text-black" value={editFormData.serial_number} onChange={e => setEditFormData({...editFormData, serial_number: e.target.value})} />
                   
+                  {/* NEW CATEGORY INPUT */}
+                  <input required placeholder="Category (e.g., Laser, CNC, Welder)" className="p-2 border rounded text-black bg-gray-50 font-semibold" value={editFormData.category} onChange={e => setEditFormData({...editFormData, category: e.target.value})} />
+
+                  <input required placeholder="Serial Number" className="p-2 border rounded text-black" value={editFormData.serial_number} onChange={e => setEditFormData({...editFormData, serial_number: e.target.value})} />
                   <input type="url" placeholder="YouTube/Drive Video Link (Optional)" className="p-2 border rounded text-black" value={editFormData.video_url} onChange={e => setEditFormData({...editFormData, video_url: e.target.value})} />
 
                   <div className="flex gap-4">
@@ -1179,6 +1191,9 @@ export default function ERPPortal() {
                 <div className="mb-6">
                   <h2 className="text-3xl font-bold text-gray-900 mb-2">{specSheetMachine.machine_name}</h2>
                   <p className="text-xl text-gray-600 font-mono bg-gray-100 inline-block px-3 py-1 rounded">S/N: {specSheetMachine.serial_number}</p>
+                  {specSheetMachine.category && specSheetMachine.category !== 'Other' && (
+                    <p className="mt-2 text-sm font-bold text-blue-600 uppercase tracking-wide">{specSheetMachine.category}</p>
+                  )}
                 </div>
                 <div className="bg-blue-50 border border-blue-100 p-6 rounded-lg mb-6 flex-grow">
                   <h3 className="text-lg font-bold text-blue-900 border-b border-blue-200 pb-2 mb-4">Inspection & Certification</h3>
