@@ -159,6 +159,58 @@ export default function ERPPortal() {
     machine.serial_number.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // --- EXPORT LOGIC (THIS WAS THE MISSING PIECE!) ---
+  const exportToCSV = (data: any[], filename: string) => {
+    if (!data || data.length === 0) return;
+    const headers = Object.keys(data[0]).join(',');
+    const rows = data.map((row: any) => 
+      Object.values(row).map((val: any) => {
+        if (val === null || val === undefined) return '""';
+        return `"${String(val).replace(/"/g, '""')}"`;
+      }).join(',')
+    );
+    const csvContent = [headers, ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${filename}.csv`;
+    link.click();
+  };
+
+  const exportMachines = () => {
+    const formattedData = machines.map((m: any) => ({
+      Machine_Name: m.machine_name,
+      Serial_Number: m.serial_number,
+      Status: m.status,
+      Paid_By_Customer: m.is_paid ? 'Yes' : 'No',
+      Invoice_Sent: m.invoice_date || '',
+      Payment_Due: m.due_date || '',
+      Purchase_Price: m.purchase_price,
+      Purchase_IVA: m.purchase_iva,
+      Shipping_Cost: m.shipping_in_cost,
+      Import_Fee: m.import_fee,
+      Total_Invested: calculateTotalCost(m),
+      Sale_Price: m.sale_price,
+      Sale_IVA: m.sale_iva,
+      Date_Acquired: m.date_acquired ? m.date_acquired.split('T')[0] : ''
+    }));
+    exportToCSV(formattedData, `FineEdge_Machines_${new Date().toISOString().split('T')[0]}`);
+  };
+
+  const exportInvoices = () => {
+    const formattedData = invoices.map((inv: any) => ({
+      Date: inv.invoice_date,
+      Provider: inv.providers?.name || 'Unknown',
+      Invoice_Number: inv.invoice_number,
+      Total_Amount: inv.total_amount,
+      IVA_Paid: inv.iva_amount,
+      Is_Paid: inv.is_paid ? 'Yes' : 'No',
+      Payment_Due: inv.due_date || '',
+      Notes: inv.notes
+    }));
+    exportToCSV(formattedData, `FineEdge_Invoices_${new Date().toISOString().split('T')[0]}`);
+  };
+
   // --- KANBAN & SALES LOGIC ---
   const handleDragStart = (e: any, machineId: any) => { if (!isAdmin) return; e.dataTransfer.setData('machineId', machineId); };
   const handleDragOver = (e: any) => { if (!isAdmin) return; e.preventDefault(); };
@@ -539,6 +591,7 @@ export default function ERPPortal() {
                         <h3 className="font-bold text-gray-800">{machine.machine_name}</h3>
                         <p className="text-sm text-gray-500 mb-2">SN: {machine.serial_number}</p>
                         
+                        {/* Video Indicator */}
                         {machine.video_url && (
                           <a href={machine.video_url} target="_blank" rel="noopener noreferrer" className="text-xs text-red-600 font-bold mb-2 flex items-center gap-1 hover:underline" onClick={(e) => e.stopPropagation()}>
                             ▶ Video Attached
@@ -595,7 +648,7 @@ export default function ERPPortal() {
           </div>
         )}
 
-        {/* --- ADD MACHINE MODAL (FIXED) --- */}
+        {/* --- ADD MACHINE MODAL --- */}
         {isAdding && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto border-t-8 border-blue-600">
@@ -613,10 +666,8 @@ export default function ERPPortal() {
                   <input required placeholder="Machine Name" className="p-2 border rounded text-black" value={formData.machine_name} onChange={e => setFormData({...formData, machine_name: e.target.value})} />
                   <input required placeholder="Serial Number" className="p-2 border rounded text-black" value={formData.serial_number} onChange={e => setFormData({...formData, serial_number: e.target.value})} />
                   
-                  {/* RESTORED VIDEO URL FIELD */}
                   <input type="url" placeholder="YouTube/Drive Video Link (Optional)" className="p-2 border rounded text-black" value={formData.video_url} onChange={e => setFormData({...formData, video_url: e.target.value})} />
 
-                  {/* REMOVED 'REQUIRED' FROM NUMBERS SO BLANK FIELDS DONT BLOCK SAVE */}
                   <div className="flex gap-4">
                      <div className="w-1/2">
                        <label className="block text-xs font-bold text-gray-500 uppercase">Purchase Price</label>
@@ -648,7 +699,7 @@ export default function ERPPortal() {
           </div>
         )}
 
-        {/* --- EDIT MACHINE MODAL (FIXED) --- */}
+        {/* --- EDIT MACHINE MODAL --- */}
         {editingMachine && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-blue-500 max-h-[90vh] overflow-y-auto">
@@ -657,10 +708,8 @@ export default function ERPPortal() {
                   <input required placeholder="Machine Name" className="p-2 border rounded text-black" value={editFormData.machine_name} onChange={e => setEditFormData({...editFormData, machine_name: e.target.value})} />
                   <input required placeholder="Serial Number" className="p-2 border rounded text-black" value={editFormData.serial_number} onChange={e => setEditFormData({...editFormData, serial_number: e.target.value})} />
                   
-                  {/* RESTORED VIDEO URL FIELD */}
                   <input type="url" placeholder="YouTube/Drive Video Link (Optional)" className="p-2 border rounded text-black" value={editFormData.video_url} onChange={e => setEditFormData({...editFormData, video_url: e.target.value})} />
 
-                  {/* REMOVED 'REQUIRED' FROM NUMBERS */}
                   <div className="flex gap-4">
                      <div className="w-1/2">
                        <label className="block text-xs font-bold text-gray-500 uppercase">Purchase Price</label>
@@ -761,7 +810,7 @@ export default function ERPPortal() {
           </div>
         )}
 
-        {/* TAB 2: INVOICES (OMITTED FOR SPACE - THESE REMAIN EXACTLY THE SAME AS BEFORE AND ARE NOT BROKEN) */}
+        {/* TAB 2: INVOICES */}
         {activeTab === 'invoices' && (
           <div className="bg-white p-6 rounded-lg shadow min-h-[500px]">
             <div className="flex justify-between items-center mb-6 border-b pb-4">
@@ -822,7 +871,7 @@ export default function ERPPortal() {
           </div>
         )}
 
-        {/* TAB 3: SAT PAYMENTS (OMITTED FOR SPACE - THESE REMAIN EXACTLY THE SAME) */}
+        {/* TAB 3: SAT PAYMENTS */}
         {activeTab === 'sat' && (
           <div className="bg-white p-6 rounded-lg shadow min-h-[500px]">
             <div className="flex justify-between items-center mb-6 border-b pb-4">
@@ -861,7 +910,7 @@ export default function ERPPortal() {
           </div>
         )}
 
-        {/* --- CASH BOX MODALS & ADD INVOICE MODALS --- */}
+        {/* --- CASH BOX HISTORY MODAL --- */}
         {showCashHistory && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-lg shadow-xl border-t-8 border-green-800 flex flex-col max-h-[90vh]">
@@ -897,6 +946,7 @@ export default function ERPPortal() {
           </div>
         )}
 
+        {/* --- ADD CASH BOX MODAL --- */}
         {isAddingCash && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-sm shadow-xl border-t-8 border-green-800">
@@ -914,6 +964,7 @@ export default function ERPPortal() {
           </div>
         )}
 
+        {/* --- ADD INVOICE MODAL --- */}
         {isAddingInvoice && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto">
@@ -969,6 +1020,7 @@ export default function ERPPortal() {
           </div>
         )}
 
+        {/* --- EDIT INVOICE MODAL --- */}
         {editingInvoice && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-blue-500 max-h-[90vh] overflow-y-auto">
@@ -1028,6 +1080,7 @@ export default function ERPPortal() {
           </div>
         )}
 
+        {/* --- ADD PROVIDER MODAL --- */}
         {isAddingProvider && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
@@ -1042,6 +1095,7 @@ export default function ERPPortal() {
           </div>
         )}
 
+        {/* --- ADD SAT PAYMENT MODAL --- */}
         {isAddingSatPayment && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-red-500">
@@ -1069,6 +1123,7 @@ export default function ERPPortal() {
           </div>
         )}
 
+        {/* --- EDIT SAT PAYMENT MODAL --- */}
         {editingSatPayment && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-red-500">
@@ -1098,7 +1153,7 @@ export default function ERPPortal() {
         )}
       </div>
 
-      {/* PRINTABLE PDF SPEC SHEET (FOR ERP VIEW ONLY) */}
+      {/* PRINTABLE PDF SPEC SHEET */}
       {specSheetMachine && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-[100] p-4 overflow-y-auto print:bg-white print:p-0">
           <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl p-8 print:shadow-none print:max-w-none print:p-0 relative">
