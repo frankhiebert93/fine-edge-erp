@@ -8,7 +8,7 @@ export default function Storefront() {
   const [searchTerm, setSearchTerm] = useState('');
   const [specSheetMachine, setSpecSheetMachine] = useState<any>(null);
 
-  // --- REPLACE WITH YOUR ACTUAL WHATSAPP NUMBER ---
+  // --- YOUR OFFICIAL BUSINESS WHATSAPP NUMBER ---
   const WHATSAPP_NUMBER = "526251191400"; 
 
   useEffect(() => {
@@ -16,7 +16,6 @@ export default function Storefront() {
   }, []);
 
   async function fetchReadyMachines() {
-    // Added video_url to the public pull
     const { data, error } = await supabase
       .from('inventory')
       .select('id, machine_name, serial_number, image_url, video_url')
@@ -81,7 +80,7 @@ export default function Storefront() {
             <div className="md:w-2/3">
               <h2 className="text-3xl font-extrabold mb-4 uppercase text-blue-400">Custom Retrofits & Fabrication</h2>
               <p className="text-gray-300 text-lg leading-relaxed">
-                Need an outfeed table, custom fixturing, or a modified frame? We don't just flip machines. Our in-house certified welding and 3D industrial drafting (SolidWorks & AutoCAD) means your machinery is customized to your exact spec before it ever hits a truck.
+                Need an outfeed table, custom fixturing, or a modified frame? We don&apos;t just flip machines. Our in-house certified welding and 3D industrial drafting (SolidWorks & AutoCAD) means your machinery is customized to your exact spec before it ever hits a truck.
               </p>
             </div>
             <div className="md:w-1/3 flex justify-center md:justify-end">
@@ -177,7 +176,7 @@ export default function Storefront() {
         <div className="bg-gray-200 border-t border-gray-300 py-16">
           <div className="max-w-4xl mx-auto px-6 text-center">
             <h2 className="text-3xl font-extrabold text-gray-800 mb-4">Looking for something specific?</h2>
-            <p className="text-gray-600 mb-8 text-lg">Our shop floor moves fast. If you need a specific laser, press brake, or CNC that isn't listed, let our sourcing team find it for you.</p>
+            <p className="text-gray-600 mb-8 text-lg">Our shop floor moves fast. If you need a specific laser, press brake, or CNC that isn&apos;t listed, let our sourcing team find it for you.</p>
             <a href={`mailto:fineedgemachines@gmail.com?subject=Machine Sourcing Request&body=I am looking for:`} className="inline-block bg-gray-800 hover:bg-black text-white font-bold py-3 px-8 rounded shadow transition">
               🔍 Activate Machine Hunter
             </a>
@@ -240,7 +239,6 @@ export default function Storefront() {
                   </div>
                   <div className="text-right">
                     <p className="text-xs text-gray-400 font-bold uppercase">Scan to contact</p>
-                    {/* Fake QR code placeholder for professionalism on print */}
                     <div className="w-16 h-16 bg-gray-200 border border-gray-300 flex items-center justify-center text-xs text-gray-400 mt-1">QR</div>
                   </div>
                 </div>
