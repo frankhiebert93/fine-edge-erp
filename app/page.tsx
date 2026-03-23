@@ -9,7 +9,6 @@ export default function Storefront() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [specSheetMachine, setSpecSheetMachine] = useState<any>(null);
 
-  // --- YOUR OFFICIAL BUSINESS WHATSAPP NUMBER ---
   const WHATSAPP_NUMBER = "526251191400"; 
 
   useEffect(() => {
@@ -17,9 +16,10 @@ export default function Storefront() {
   }, []);
 
   async function fetchReadyMachines() {
+    // ADDED: 'description' to the pull
     const { data, error } = await supabase
       .from('inventory')
-      .select('id, machine_name, serial_number, image_url, video_url, category')
+      .select('id, machine_name, serial_number, image_url, video_url, category, description')
       .eq('status', 'Ready')
       .order('machine_name', { ascending: true });
       
@@ -27,14 +27,12 @@ export default function Storefront() {
     setLoading(false);
   }
 
-  // Auto-generate filter buttons based on what is actually in stock
   const dynamicCategories = ['All', ...Array.from(new Set(machines.map(m => m.category || 'Other')))];
 
   const filteredMachines = machines.filter(m => {
     const matchesSearch = m.machine_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           m.serial_number.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = activeCategory === 'All' || (m.category || 'Other') === activeCategory;
-    
     return matchesSearch && matchesCategory;
   });
 
@@ -42,7 +40,6 @@ export default function Storefront() {
     <>
       <div className={`min-h-screen bg-gray-100 font-sans ${specSheetMachine ? 'print:hidden hidden' : ''}`}>
         
-        {/* HERO SECTION */}
         <header className="bg-gray-900 text-white border-b-8 border-blue-600 relative overflow-hidden">
           <div className="absolute inset-0 bg-black opacity-50"></div> 
           <div className="relative max-w-6xl mx-auto px-6 py-24 text-center">
@@ -58,7 +55,6 @@ export default function Storefront() {
           </div>
         </header>
 
-        {/* TRUST BADGES SECTION */}
         <div className="bg-white shadow-md border-b border-gray-200">
           <div className="max-w-6xl mx-auto px-6 py-12">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
@@ -81,7 +77,6 @@ export default function Storefront() {
           </div>
         </div>
 
-        {/* CUSTOM FABRICATION BANNER */}
         <div className="bg-gray-800 text-white py-16 border-b-4 border-gray-900">
           <div className="max-w-5xl mx-auto px-6 flex flex-col md:flex-row items-center gap-8">
             <div className="md:w-2/3">
@@ -98,7 +93,6 @@ export default function Storefront() {
           </div>
         </div>
 
-        {/* INVENTORY SECTION */}
         <main id="inventory" className="max-w-6xl mx-auto px-6 py-16">
           <div className="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-4 rounded-lg shadow-sm border border-gray-200">
             <div>
@@ -116,7 +110,6 @@ export default function Storefront() {
             </div>
           </div>
 
-          {/* DYNAMIC CATEGORY BUTTONS */}
           <div className="flex gap-3 overflow-x-auto pb-6 mb-4 hide-scrollbar">
             {dynamicCategories.map((cat: any) => (
               <button 
@@ -168,14 +161,21 @@ export default function Storefront() {
 
                     <div className="p-6 flex-grow flex flex-col">
                       <h3 className="text-2xl font-bold text-gray-900 mb-2 leading-tight">{machine.machine_name}</h3>
-                      <p className="text-sm text-gray-600 font-mono bg-gray-100 self-start px-3 py-1 rounded mb-4 border border-gray-300 shadow-inner">
+                      <p className="text-sm text-gray-600 font-mono bg-gray-100 self-start px-3 py-1 rounded mb-3 border border-gray-300 shadow-inner">
                         S/N: {machine.serial_number}
                       </p>
+
+                      {/* NEW: DESCRIPTION SNIPPET ON CARD */}
+                      {machine.description && (
+                        <p className="text-sm text-gray-700 mb-4 line-clamp-3 leading-relaxed">
+                          {machine.description}
+                        </p>
+                      )}
                       
-                      <ul className="text-sm text-gray-600 mb-6 flex-grow space-y-2">
+                      <ul className="text-sm text-gray-600 mb-6 flex-grow space-y-2 mt-auto">
                         <li className="flex items-center gap-2 text-green-700">✓ <span className="font-semibold text-gray-700">Multi-point inspection passed</span></li>
                         <li className="flex items-center gap-2 text-green-700">✓ <span className="font-semibold text-gray-700">Fully refurbished & tested</span></li>
-                        <li className="flex items-center gap-2 text-green-700">✓ <span className="font-semibold text-gray-700">Ready for immediate deployment</span></li>
+                        <li className="flex items-center gap-2 text-green-700">✓ <span className="font-semibold text-gray-700">Ready for deployment</span></li>
                       </ul>
 
                       <div className="flex flex-col gap-2 mt-auto">
@@ -201,7 +201,6 @@ export default function Storefront() {
           )}
         </main>
 
-        {/* MACHINE HUNTER SECTION */}
         <div className="bg-gray-200 border-t border-gray-300 py-16">
           <div className="max-w-4xl mx-auto px-6 text-center">
             <h2 className="text-3xl font-extrabold text-gray-800 mb-4">Looking for something specific?</h2>
@@ -212,7 +211,6 @@ export default function Storefront() {
           </div>
         </div>
 
-        {/* FOOTER */}
         <footer className="bg-gray-900 text-gray-400 py-12 text-center border-t-4 border-gray-800">
           <h2 className="font-extrabold text-2xl text-white mb-2 uppercase tracking-wide">Fine Edge Machinery</h2>
           <p className="text-sm mb-4">Cuauhtémoc, Chihuahua, Mexico</p>
@@ -236,7 +234,6 @@ export default function Storefront() {
               </div>
             </div>
             
-            {/* PUBLIC PDF CONTENT */}
             <div className="mb-8 border-b-4 border-gray-900 pb-4 flex justify-between items-end">
               <div>
                 <h1 className="text-5xl font-extrabold text-gray-900 tracking-tight">FINE EDGE MACHINERY</h1>
@@ -255,6 +252,15 @@ export default function Storefront() {
                     <p className="mt-2 text-sm font-bold text-blue-600 uppercase tracking-wide">{specSheetMachine.category}</p>
                   )}
                 </div>
+
+                {/* NEW: DESCRIPTION IN SPEC SHEET */}
+                {specSheetMachine.description && (
+                  <div className="bg-gray-50 border border-gray-200 p-5 rounded-lg mb-6">
+                    <h3 className="text-sm font-bold text-gray-800 uppercase mb-3 border-b pb-2">Machine Details & Specs</h3>
+                    <p className="text-gray-700 text-sm whitespace-pre-wrap leading-relaxed">{specSheetMachine.description}</p>
+                  </div>
+                )}
+
                 <div className="bg-blue-50 border border-blue-100 p-6 rounded-lg mb-6 flex-grow">
                   <h3 className="text-lg font-bold text-blue-900 border-b border-blue-200 pb-2 mb-4">Inspection & Certification</h3>
                   <ul className="list-disc pl-5 text-gray-800 flex flex-col gap-2">
