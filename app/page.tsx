@@ -9,6 +9,7 @@ export default function Storefront() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [specSheetMachine, setSpecSheetMachine] = useState<any>(null);
 
+  // --- YOUR OFFICIAL BUSINESS WHATSAPP NUMBER ---
   const WHATSAPP_NUMBER = "526251191400"; 
 
   useEffect(() => {
@@ -16,7 +17,6 @@ export default function Storefront() {
   }, []);
 
   async function fetchReadyMachines() {
-    // ADDED: 'description' to the pull
     const { data, error } = await supabase
       .from('inventory')
       .select('id, machine_name, serial_number, image_url, video_url, category, description')
@@ -165,7 +165,6 @@ export default function Storefront() {
                         S/N: {machine.serial_number}
                       </p>
 
-                      {/* NEW: DESCRIPTION SNIPPET ON CARD */}
                       {machine.description && (
                         <p className="text-sm text-gray-700 mb-4 line-clamp-3 leading-relaxed">
                           {machine.description}
@@ -224,7 +223,7 @@ export default function Storefront() {
 
       {/* ========================================= PRINTABLE PUBLIC SPEC SHEET ========================================= */}
       {specSheetMachine && (
-        <div className="fixed inset-0 bg-gray-800 bg-opacity-90 flex items-center justify-center z-[100] p-4 overflow-y-auto print:bg-white print:p-0">
+        <div className="fixed inset-0 bg-gray-800 bg-opacity-90 flex items-start justify-center z-[100] p-4 pt-12 overflow-y-auto print:bg-white print:p-0 print:block">
           <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl p-8 print:shadow-none print:max-w-none print:p-0 relative">
             <div className="flex justify-between items-center mb-8 pb-4 border-b-2 border-gray-200 print:hidden">
               <h2 className="text-xl font-bold text-gray-700">Official Spec Sheet</h2>
@@ -253,7 +252,6 @@ export default function Storefront() {
                   )}
                 </div>
 
-                {/* NEW: DESCRIPTION IN SPEC SHEET */}
                 {specSheetMachine.description && (
                   <div className="bg-gray-50 border border-gray-200 p-5 rounded-lg mb-6">
                     <h3 className="text-sm font-bold text-gray-800 uppercase mb-3 border-b pb-2">Machine Details & Specs</h3>
