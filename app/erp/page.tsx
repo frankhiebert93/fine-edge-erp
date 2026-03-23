@@ -17,7 +17,7 @@ export default function ERPPortal() {
     } else {
       const pin = window.prompt("Enter Admin PIN to unlock editing:");
       // CHANGE THIS PIN RIGHT HERE:
-      if (pin === "1234") { 
+      if (pin === "6542") { 
         setIsAdmin(true);
       } else if (pin !== null) {
         alert("Incorrect PIN. View Only Mode active.");
@@ -44,7 +44,6 @@ export default function ERPPortal() {
   const [selectedMachine, setSelectedMachine] = useState<any>(null);
   const [specSheetMachine, setSpecSheetMachine] = useState<any>(null); 
 
-  // ADDED: description to forms
   const [formData, setFormData] = useState({ machine_name: '', serial_number: '', category: '', description: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '', video_url: '' });
   const [editingMachine, setEditingMachine] = useState<any>(null);
   const [editFormData, setEditFormData] = useState<any>({ machine_name: '', serial_number: '', category: '', description: '', purchase_price: '', purchase_iva: '', shipping_in_cost: '', import_fee: '', invoice_date: '', due_date: '', video_url: '' });
@@ -296,7 +295,7 @@ export default function ERPPortal() {
 
     const { error } = await supabase.from('inventory').insert([{
       machine_name: formData.machine_name, serial_number: formData.serial_number, category: formData.category || 'Other',
-      description: formData.description || null, // ADDED DESCRIPTION
+      description: formData.description || null,
       purchase_price: parseFloat(formData.purchase_price) || 0, purchase_iva: parseFloat(formData.purchase_iva) || 0, 
       shipping_in_cost: parseFloat(formData.shipping_in_cost) || 0, import_fee: parseFloat(formData.import_fee) || 0,
       video_url: formData.video_url || null, status: 'Intake', image_url: imageUrl, pedimento_url: pedimentoUrl, is_paid: false
@@ -317,7 +316,7 @@ export default function ERPPortal() {
     setEditingMachine(machine);
     setEditFormData({
       machine_name: machine.machine_name || '', serial_number: machine.serial_number || '', category: machine.category || '',
-      description: machine.description || '', // ADDED DESCRIPTION
+      description: machine.description || '',
       purchase_price: machine.purchase_price || '', purchase_iva: machine.purchase_iva || '',
       shipping_in_cost: machine.shipping_in_cost || '', import_fee: machine.import_fee || '',
       invoice_date: machine.invoice_date || '', due_date: machine.due_date || '', video_url: machine.video_url || ''
@@ -338,7 +337,7 @@ export default function ERPPortal() {
 
     const payload: any = {
       machine_name: editFormData.machine_name, serial_number: editFormData.serial_number, category: editFormData.category || 'Other',
-      description: editFormData.description || null, // ADDED DESCRIPTION
+      description: editFormData.description || null,
       purchase_price: parseFloat(editFormData.purchase_price) || 0, purchase_iva: parseFloat(editFormData.purchase_iva) || 0,
       shipping_in_cost: parseFloat(editFormData.shipping_in_cost) || 0, import_fee: parseFloat(editFormData.import_fee) || 0,
       video_url: editFormData.video_url || null, pedimento_url: pedimentoUrl
@@ -450,7 +449,6 @@ export default function ERPPortal() {
     setEditingSatPayment(null); setSatReceiptFile(null); fetchSatPayments(); setIsUploadingSat(false);
   }
 
-  // --- CASH BOX LOGIC ---
   async function handleAddCash(e: any) {
     e.preventDefault(); if (!isAdmin) return;
     await supabase.from('cash_box').insert([{ amount: parseFloat(cashForm.amount) || 0, notes: cashForm.notes, date: cashForm.date || new Date().toISOString().split('T')[0] }]);
@@ -665,7 +663,6 @@ export default function ERPPortal() {
                   <input required placeholder="Category (e.g., Laser, CNC, Welder)" className="p-2 border rounded text-black bg-gray-50 font-semibold" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} />
                   <input required placeholder="Serial Number" className="p-2 border rounded text-black" value={formData.serial_number} onChange={e => setFormData({...formData, serial_number: e.target.value})} />
                   
-                  {/* NEW: DESCRIPTION FIELD */}
                   <textarea placeholder="Machine Description / Specs" className="p-2 border rounded text-black h-24" value={formData.description || ''} onChange={e => setFormData({...formData, description: e.target.value})} />
 
                   <input type="url" placeholder="YouTube/Drive Video Link (Optional)" className="p-2 border rounded text-black" value={formData.video_url} onChange={e => setFormData({...formData, video_url: e.target.value})} />
@@ -711,7 +708,6 @@ export default function ERPPortal() {
                   <input required placeholder="Category (e.g., Laser, CNC, Welder)" className="p-2 border rounded text-black bg-gray-50 font-semibold" value={editFormData.category} onChange={e => setEditFormData({...editFormData, category: e.target.value})} />
                   <input required placeholder="Serial Number" className="p-2 border rounded text-black" value={editFormData.serial_number} onChange={e => setEditFormData({...editFormData, serial_number: e.target.value})} />
                   
-                  {/* NEW: DESCRIPTION FIELD */}
                   <textarea placeholder="Machine Description / Specs" className="p-2 border rounded text-black h-24" value={editFormData.description || ''} onChange={e => setEditFormData({...editFormData, description: e.target.value})} />
 
                   <input type="url" placeholder="YouTube/Drive Video Link (Optional)" className="p-2 border rounded text-black" value={editFormData.video_url} onChange={e => setEditFormData({...editFormData, video_url: e.target.value})} />
@@ -1153,15 +1149,15 @@ export default function ERPPortal() {
         )}
       </div>
 
-      {/* PRINTABLE PDF SPEC SHEET */}
+      {/* ========================================= PRINTABLE PDF SPEC SHEET ========================================= */}
       {specSheetMachine && (
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-[100] p-4 overflow-y-auto print:bg-white print:p-0">
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-start justify-center z-[100] p-4 pt-12 overflow-y-auto print:bg-white print:p-0 print:block">
           <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl p-8 print:shadow-none print:max-w-none print:p-0 relative">
             <div className="flex justify-between items-center mb-8 pb-4 border-b-2 border-gray-200 print:hidden">
               <h2 className="text-xl font-bold text-gray-700">Official Spec Sheet</h2>
               <div className="flex gap-4">
                 <button onClick={() => setSpecSheetMachine(null)} className="px-4 py-2 bg-gray-200 text-gray-700 font-bold rounded hover:bg-gray-300">Close</button>
-                <button onClick={() => window.print()} className="px-6 py-2 bg-blue-600 text-white font-bold rounded hover:bg-blue-700 shadow">🖨️ Print / Save PDF</button>
+                <button onClick={() => window.print()} className="px-6 py-2 bg-blue-600 text-white font-bold rounded hover:bg-blue-700 shadow">🖨️ Save as PDF</button>
               </div>
             </div>
             
@@ -1184,7 +1180,6 @@ export default function ERPPortal() {
                   )}
                 </div>
 
-                {/* NEW: DESCRIPTION IN SPEC SHEET */}
                 {specSheetMachine.description && (
                   <div className="bg-gray-50 border border-gray-200 p-5 rounded-lg mb-6">
                     <h3 className="text-sm font-bold text-gray-800 uppercase mb-3 border-b pb-2">Machine Details & Specs</h3>
