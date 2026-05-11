@@ -5,25 +5,13 @@ import { supabase } from '../../lib/supabase';
 const COLUMNS = ['Intake', 'Refurbishing', 'Ready', 'Sold'];
 
 export default function ERPPortal() {
-  const [activeTab, setActiveTab] = useState('kanban'); 
-  const [searchTerm, setSearchTerm] = useState('');
-
-  // --- SECURITY: ADMIN MODE ---
+  // --- SECURITY: HARD LOCK SCREEN ---
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [pinInput, setPinInput] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
 
-  const handleAdminToggle = () => {
-    if (isAdmin) {
-      setIsAdmin(false); 
-    } else {
-      const pin = window.prompt("Enter Admin PIN to unlock editing:");
-      // CHANGE THIS PIN RIGHT HERE:
-      if (pin === "6542") { 
-        setIsAdmin(true);
-      } else if (pin !== null) {
-        alert("Incorrect PIN. View Only Mode active.");
-      }
-    }
-  };
+  const [activeTab, setActiveTab] = useState('kanban'); 
+  const [searchTerm, setSearchTerm] = useState('');
 
   const sanitizeFileName = (name: string) => name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
 
@@ -86,12 +74,15 @@ export default function ERPPortal() {
   const [showCashHistory, setShowCashHistory] = useState(false);
   const [cashForm, setCashForm] = useState({ amount: '', notes: '', date: '' });
 
+  // ONLY FETCH DATA AFTER PIN IS ENTERED
   useEffect(() => {
-    fetchInventory();
-    fetchProvidersAndInvoices();
-    fetchSatPayments();
-    fetchCashBox();
-  }, []);
+    if (isAuthenticated) {
+      fetchInventory();
+      fetchProvidersAndInvoices();
+      fetchSatPayments();
+      fetchCashBox();
+    }
+  }, [isAuthenticated]);
 
   async function fetchInventory() {
     const { data, error } = await supabase.from('inventory')
@@ -353,7 +344,6 @@ export default function ERPPortal() {
     setIsUploading(false);
   }
 
-  // --- REPAIR MANAGER LOGIC ---
   async function handleAddRepair(e: any) {
     e.preventDefault(); if (!isAdmin) return;
     const payload: any = { inventory_id: selectedMachine.id, item_description: repairForm.item_description, part_cost: parseFloat(repairForm.part_cost) || 0, labor_hours: parseFloat(repairForm.labor_hours) || 0 };
@@ -363,24 +353,26 @@ export default function ERPPortal() {
     const { data } = await supabase.from('inventory').select('*, repair_logs(*, parts_invoices(invoice_number, file_url, providers(name)))').eq('id', selectedMachine.id).single();
     setSelectedMachine(data);
   }
+
   async function handleDeleteRepair(repairId: any) {
     if (!isAdmin) return; await supabase.from('repair_logs').delete().eq('id', repairId); fetchInventory();
     const { data } = await supabase.from('inventory').select('*, repair_logs(*, parts_invoices(invoice_number, file_url, providers(name)))').eq('id', selectedMachine.id).single();
     setSelectedMachine(data);
   }
 
-  // --- PROVIDER & INVOICE LOGIC ---
   async function handleToggleInvoicePaid(e: any, invoiceId: string, currentStatus: boolean) {
     e.stopPropagation(); if (!isAdmin) return;
     const newStatus = !currentStatus;
     setInvoices((prev: any[]) => prev.map(inv => inv.id === invoiceId ? { ...inv, is_paid: newStatus } : inv));
     await supabase.from('parts_invoices').update({ is_paid: newStatus }).eq('id', invoiceId);
   }
+
   async function handleAddProvider(e: any) {
     e.preventDefault(); if (!isAdmin) return;
     await supabase.from('providers').insert([providerForm]);
     setIsAddingProvider(false); setProviderForm({ name: '', contact_info: '', notes: '' }); fetchProvidersAndInvoices();
   }
+
   async function handleAddInvoice(e: any) {
     e.preventDefault(); if (!isAdmin) return;
     setIsUploadingInvoice(true); let fileUrl = null;
@@ -398,6 +390,7 @@ export default function ERPPortal() {
     setIsAddingInvoice(false); setInvoiceForm({ provider_id: '', invoice_number: '', total_amount: '', iva_amount: '', invoice_date: '', due_date: '', notes: '', no_factura: false, is_paid: false }); 
     setInvoiceFile(null); fetchProvidersAndInvoices(); setIsUploadingInvoice(false);
   }
+
   function openEditInvoiceModal(invoice: any) {
     if (!isAdmin) return; setEditingInvoice(invoice); setInvoiceFile(null); 
     setEditInvoiceForm({
@@ -406,6 +399,7 @@ export default function ERPPortal() {
       notes: invoice.notes || '', no_factura: invoice.invoice_number === 'Sin Factura', is_paid: invoice.is_paid || false
     });
   }
+
   async function handleUpdateInvoice(e: any) {
     e.preventDefault(); if (!isAdmin) return;
     setIsUploadingInvoice(true); let fileUrl = editingInvoice.file_url;
@@ -422,7 +416,6 @@ export default function ERPPortal() {
     setEditingInvoice(null); setInvoiceFile(null); fetchProvidersAndInvoices(); setIsUploadingInvoice(false);
   }
 
-  // --- SAT PAYMENT LOGIC ---
   async function handleAddSatPayment(e: any) {
     e.preventDefault(); if (!isAdmin) return; setIsUploadingSat(true); let receiptUrl = null;
     if (satReceiptFile) {
@@ -457,6 +450,46 @@ export default function ERPPortal() {
 
   const calculateIva = (amount: any) => (parseFloat(amount) * 0.16).toFixed(2);
 
+
+  // --- SECURITY LOCK SCREEN ---
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center font-sans p-4">
+        <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm border-t-8 border-blue-600">
+          <div className="text-center mb-6">
+            <div className="text-5xl mb-4">🔒</div>
+            <h1 className="text-2xl font-extrabold text-gray-800 uppercase tracking-wide">Secure Access</h1>
+            <p className="text-gray-500 text-sm mt-2">Fine Edge Machinery ERP</p>
+          </div>
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            if (pinInput === "6542") {
+              setIsAuthenticated(true);
+              setIsAdmin(true);
+            } else {
+              alert("Incorrect PIN.");
+              setPinInput('');
+            }
+          }} className="flex flex-col gap-4">
+            <input 
+              required 
+              type="password" 
+              value={pinInput} 
+              onChange={e => setPinInput(e.target.value)} 
+              placeholder="Enter PIN" 
+              className="p-4 border border-gray-300 rounded text-center text-3xl tracking-[0.5em] text-black shadow-inner focus:outline-none focus:ring-2 focus:ring-blue-500" 
+              autoFocus 
+            />
+            <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded transition shadow-md text-lg">
+              Unlock Dashboard
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // --- MAIN ERP DASHBOARD ---
   return (
     <>
       <div className={`min-h-screen bg-gray-100 p-8 ${specSheetMachine ? 'print:hidden hidden' : ''}`}>
@@ -465,8 +498,11 @@ export default function ERPPortal() {
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-4">
             <h1 className="text-3xl font-bold text-gray-800">Fine Edge Machines - ERP</h1>
-            <button onClick={handleAdminToggle} className={`text-xs px-3 py-1.5 rounded font-bold transition shadow-sm ${isAdmin ? 'bg-green-100 text-green-700 border border-green-300' : 'bg-gray-200 text-gray-600 border border-gray-300'}`}>
-              {isAdmin ? '🔓 Admin Unlocked' : '🔒 View Only'}
+            <button 
+              onClick={() => { setIsAuthenticated(false); setPinInput(''); setIsAdmin(false); }} 
+              className="text-xs px-3 py-1.5 rounded font-bold transition shadow-sm bg-red-100 text-red-700 border border-red-300 hover:bg-red-200"
+            >
+              🔒 Lock & Exit
             </button>
           </div>
         </div>
@@ -812,7 +848,7 @@ export default function ERPPortal() {
           </div>
         )}
 
-        {/* TAB 2: INVOICES (OMITTED FOR SPACE - REMAIN EXACTLY THE SAME) */}
+        {/* TAB 2: INVOICES */}
         {activeTab === 'invoices' && (
           <div className="bg-white p-6 rounded-lg shadow min-h-[500px]">
             <div className="flex justify-between items-center mb-6 border-b pb-4">
@@ -873,7 +909,7 @@ export default function ERPPortal() {
           </div>
         )}
 
-        {/* TAB 3: SAT PAYMENTS (OMITTED FOR SPACE - REMAIN EXACTLY THE SAME) */}
+        {/* TAB 3: SAT PAYMENTS */}
         {activeTab === 'sat' && (
           <div className="bg-white p-6 rounded-lg shadow min-h-[500px]">
             <div className="flex justify-between items-center mb-6 border-b pb-4">
