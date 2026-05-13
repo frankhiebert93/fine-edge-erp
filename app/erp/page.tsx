@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 
 const COLUMNS = ['Intake', 'Refurbishing', 'Ready', 'Sold'];
-const RENTAL_COLUMNS = ['Available', 'Out on Rent', 'Maintenance'];
+// NEW: Added 'In Transit' to the Rental Board!
+const RENTAL_COLUMNS = ['In Transit', 'Available', 'Out on Rent', 'Maintenance'];
 
 export default function ERPPortal() {
   // --- SECURITY: HARD LOCK SCREEN ---
@@ -222,6 +223,7 @@ export default function ERPPortal() {
     exportToCSV(formattedData, `FineEdge_Invoices_${new Date().toISOString().split('T')[0]}`);
   };
 
+  // --- KANBAN LOGIC (MACHINERY) ---
   const handleDragStart = (e: any, machineId: any) => { if (!isAdmin) return; e.dataTransfer.setData('machineId', machineId); e.dataTransfer.setData('type', 'machine'); };
   const handleDragOver = (e: any) => { if (!isAdmin) return; e.preventDefault(); };
 
@@ -241,6 +243,7 @@ export default function ERPPortal() {
     await supabase.from('inventory').update({ status: newStatus, sale_price: 0, sale_iva: 0, is_paid: false, invoice_date: null, due_date: null }).eq('id', machineId);
   };
 
+  // --- KANBAN LOGIC (RENTALS) ---
   const handleRentalDragStart = (e: any, rentalId: any) => { if (!isAdmin) return; e.dataTransfer.setData('rentalId', rentalId); e.dataTransfer.setData('type', 'rental'); };
 
   const handleRentalDrop = async (e: any, newStatus: any) => {
@@ -764,7 +767,7 @@ export default function ERPPortal() {
           </div>
         )}
 
-        {/* KANBAN BOARD (RENTALS) */}
+        {/* KANBAN BOARD (RENTALS) WITH IN TRANSIT COLUMN */}
         {activeTab === 'rentals' && (
           <div className="flex gap-6 overflow-x-auto pb-4">
             {RENTAL_COLUMNS.map(column => (
@@ -772,7 +775,7 @@ export default function ERPPortal() {
                 <h2 className="font-bold text-lg mb-4 text-gray-700 uppercase tracking-wide border-b-2 border-gray-300 pb-2">{column} ({filteredRentals.filter((r: any) => r.status === column).length})</h2>
                 <div className="flex flex-col gap-4">
                   {filteredRentals.filter((r: any) => r.status === column).map((rental: any) => (
-                    <div key={rental.id} draggable={isAdmin} onDragStart={(e) => handleRentalDragStart(e, rental.id)} className={`bg-white p-4 rounded shadow ${isAdmin ? 'cursor-grab active:cursor-grabbing' : ''} border-l-4 ${column === 'Available' ? 'border-green-500' : column === 'Out on Rent' ? 'border-orange-500' : 'border-red-500'} hover:shadow-lg transition transform hover:-translate-y-1`}>
+                    <div key={rental.id} draggable={isAdmin} onDragStart={(e) => handleRentalDragStart(e, rental.id)} className={`bg-white p-4 rounded shadow ${isAdmin ? 'cursor-grab active:cursor-grabbing' : ''} border-l-4 ${column === 'Available' ? 'border-green-500' : column === 'Out on Rent' ? 'border-orange-500' : column === 'In Transit' ? 'border-blue-500' : 'border-red-500'} hover:shadow-lg transition transform hover:-translate-y-1`}>
                       {rental.image_url && <img src={rental.image_url} alt="Equipment" className="w-full h-32 object-cover rounded mb-3 border" />}
                       <h3 className="font-bold text-gray-800">{rental.equipment_name}</h3>
                       {rental.category && rental.category !== 'Other' && (
@@ -911,7 +914,6 @@ export default function ERPPortal() {
           </div>
         )}
 
-        {/* --- ADD RENTAL MODAL --- */}
         {isAddingRental && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto border-t-8 border-orange-500">
@@ -944,7 +946,6 @@ export default function ERPPortal() {
           </div>
         )}
 
-        {/* --- EDIT RENTAL MODAL (WITH QR GENERATOR) --- */}
         {editingRental && isAdmin && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-orange-500 max-h-[90vh] overflow-y-auto">
