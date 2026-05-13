@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import TopNav from '../components/TopNav';
 
 export default function Storefront() {
   const [machines, setMachines] = useState<any[]>([]);
@@ -9,8 +10,7 @@ export default function Storefront() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [specSheetMachine, setSpecSheetMachine] = useState<any>(null);
 
-  // --- YOUR OFFICIAL BUSINESS WHATSAPP NUMBER ---
-  const WHATSAPP_NUMBER = "526251191400"; 
+  const WHATSAPP_NUMBER = "526251191400";
 
   useEffect(() => {
     fetchReadyMachines();
@@ -22,7 +22,7 @@ export default function Storefront() {
       .select('id, machine_name, serial_number, image_url, video_url, category, description')
       .eq('status', 'Ready')
       .order('machine_name', { ascending: true });
-      
+
     if (!error) setMachines(data || []);
     setLoading(false);
   }
@@ -30,8 +30,8 @@ export default function Storefront() {
   const dynamicCategories = ['All', ...Array.from(new Set(machines.map(m => m.category || 'Other')))];
 
   const filteredMachines = machines.filter(m => {
-    const matchesSearch = m.machine_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          m.serial_number.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = m.machine_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      m.serial_number.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = activeCategory === 'All' || (m.category || 'Other') === activeCategory;
     return matchesSearch && matchesCategory;
   });
@@ -39,9 +39,12 @@ export default function Storefront() {
   return (
     <>
       <div className={`min-h-screen bg-gray-100 font-sans ${specSheetMachine ? 'print:hidden hidden' : ''}`}>
-        
+
+        {/* TOP NAVIGATION BAR */}
+        <TopNav activeTab="machinery" />
+
         <header className="bg-gray-900 text-white border-b-8 border-blue-600 relative overflow-hidden">
-          <div className="absolute inset-0 bg-black opacity-50"></div> 
+          <div className="absolute inset-0 bg-black opacity-50"></div>
           <div className="relative max-w-6xl mx-auto px-6 py-24 text-center">
             <h1 className="text-5xl md:text-6xl font-extrabold tracking-tight mb-4 uppercase text-transparent bg-clip-text bg-gradient-to-r from-gray-100 to-gray-400">
               Fine Edge Machinery
@@ -100,9 +103,9 @@ export default function Storefront() {
               <p className="text-gray-500 font-semibold">{filteredMachines.length} Machines Available</p>
             </div>
             <div className="mt-4 md:mt-0 w-full md:w-auto">
-              <input 
-                type="text" 
-                placeholder="🔍 Search for a machine or S/N..." 
+              <input
+                type="text"
+                placeholder="🔍 Search for a machine or S/N..."
                 className="w-full md:w-80 p-3 border border-gray-300 rounded text-black shadow-inner focus:outline-none focus:ring-2 focus:ring-blue-500"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -112,14 +115,13 @@ export default function Storefront() {
 
           <div className="flex gap-3 overflow-x-auto pb-6 mb-4 hide-scrollbar">
             {dynamicCategories.map((cat: any) => (
-              <button 
+              <button
                 key={cat}
                 onClick={() => setActiveCategory(cat)}
-                className={`px-6 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-all shadow-sm border ${
-                  activeCategory === cat 
-                    ? 'bg-blue-600 text-white border-blue-700' 
+                className={`px-6 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-all shadow-sm border ${activeCategory === cat
+                    ? 'bg-blue-600 text-white border-blue-700'
                     : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100 hover:text-gray-900'
-                }`}
+                  }`}
               >
                 {cat}
               </button>
@@ -170,7 +172,7 @@ export default function Storefront() {
                           {machine.description}
                         </p>
                       )}
-                      
+
                       <ul className="text-sm text-gray-600 mb-6 flex-grow space-y-2 mt-auto">
                         <li className="flex items-center gap-2 text-green-700">✓ <span className="font-semibold text-gray-700">Multi-point inspection passed</span></li>
                         <li className="flex items-center gap-2 text-green-700">✓ <span className="font-semibold text-gray-700">Fully refurbished & tested</span></li>
@@ -232,7 +234,7 @@ export default function Storefront() {
                 <button onClick={() => window.print()} className="px-6 py-2 bg-blue-600 text-white font-bold rounded hover:bg-blue-700 shadow">🖨️ Print / Save PDF</button>
               </div>
             </div>
-            
+
             <div className="mb-8 border-b-4 border-gray-900 pb-4 flex justify-between items-end">
               <div>
                 <h1 className="text-5xl font-extrabold text-gray-900 tracking-tight">FINE EDGE MACHINERY</h1>
@@ -275,9 +277,9 @@ export default function Storefront() {
                   </div>
                   <div className="text-right flex flex-col items-end">
                     <p className="text-xs text-gray-400 font-bold uppercase mb-1">Scan to WhatsApp</p>
-                    <img 
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent('https://wa.me/' + WHATSAPP_NUMBER)}`} 
-                      alt="WhatsApp QR Code" 
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent('https://wa.me/' + WHATSAPP_NUMBER)}`}
+                      alt="WhatsApp QR Code"
                       className="w-16 h-16 border border-gray-300 rounded shadow-sm"
                     />
                   </div>
