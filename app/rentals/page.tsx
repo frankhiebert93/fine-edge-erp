@@ -149,8 +149,9 @@ export default function RentalsStorefront() {
                                             S/N: {rental.serial_number || 'N/A'}
                                         </p>
 
+                                        {/* FIXED: Removed line-clamp-2 and added whitespace-pre-wrap so it shows everything perfectly! */}
                                         {rental.description && (
-                                            <p className="text-sm text-gray-700 mb-4 line-clamp-2 leading-relaxed">
+                                            <p className="text-sm text-gray-700 mb-4 whitespace-pre-wrap leading-relaxed">
                                                 {rental.description}
                                             </p>
                                         )}
