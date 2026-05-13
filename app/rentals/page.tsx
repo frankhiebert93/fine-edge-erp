@@ -17,7 +17,6 @@ export default function RentalsStorefront() {
     }, []);
 
     async function fetchRentals() {
-        // Pulls live data from your new rental_fleet table!
         const { data, error } = await supabase
             .from('rental_fleet')
             .select('*')
@@ -27,7 +26,6 @@ export default function RentalsStorefront() {
         setLoading(false);
     }
 
-    // Auto-generate categories based on your fleet
     const dynamicCategories = ['All', ...Array.from(new Set(rentals.map(r => r.category || 'Other')))];
 
     const filteredRentals = rentals.filter(r => {
@@ -41,11 +39,8 @@ export default function RentalsStorefront() {
 
     return (
         <div className="min-h-screen bg-gray-100 font-sans flex flex-col">
-
-            {/* TOP NAVIGATION BAR - Active on Rentals */}
             <TopNav activeTab="rentals" />
 
-            {/* HERO SECTION - Orange Theme */}
             <header className="bg-gray-900 text-white border-b-8 border-orange-500 relative overflow-hidden">
                 <div className="absolute inset-0 bg-black opacity-60"></div>
                 <div className="relative max-w-6xl mx-auto px-6 py-24 text-center">
@@ -61,7 +56,6 @@ export default function RentalsStorefront() {
                 </div>
             </header>
 
-            {/* RENTAL FLEET GRID */}
             <main id="fleet" className="max-w-6xl mx-auto px-6 py-16 flex-grow w-full">
                 <div className="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-4 rounded-lg shadow-sm border border-gray-200">
                     <div>
@@ -79,7 +73,6 @@ export default function RentalsStorefront() {
                     </div>
                 </div>
 
-                {/* DYNAMIC CATEGORY BUTTONS (ORANGE) */}
                 <div className="flex gap-3 overflow-x-auto pb-6 mb-4 hide-scrollbar">
                     {dynamicCategories.map((cat: any) => (
                         <button
@@ -107,8 +100,24 @@ export default function RentalsStorefront() {
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                         {filteredRentals.map((rental) => {
-                            const isAvailable = rental.status === 'Available';
-                            const whatsappMessage = encodeURIComponent(`Hola, me interesa rentar el equipo: ${rental.equipment_name} (S/N: ${rental.serial_number}). ¿Tienen disponibilidad?`);
+
+                            // THE NEW LOGIC ENGINE THAT KNOWS ALL 4 STATUSES
+                            let badgeText = 'OUT ON RENT';
+                            let badgeColor = 'bg-red-600 border border-red-500';
+                            let whatsappMessage = encodeURIComponent(`Hola, me interesa rentar el equipo: ${rental.equipment_name} (S/N: ${rental.serial_number}). ¿Tienen disponibilidad?`);
+
+                            if (rental.status === 'Available') {
+                                badgeText = 'AVAILABLE';
+                                badgeColor = 'bg-green-600 border border-green-500';
+                            } else if (rental.status === 'In Transit') {
+                                badgeText = 'COMING SOON';
+                                badgeColor = 'bg-blue-600 border border-blue-500';
+                                whatsappMessage = encodeURIComponent(`Hola, vi el ${rental.equipment_name} que está "Próximamente". ¿Me puedes avisar cuando llegue para rentarlo?`);
+                            } else if (rental.status === 'Maintenance') {
+                                badgeText = 'IN MAINTENANCE';
+                                badgeColor = 'bg-gray-600 border border-gray-500';
+                            }
+
                             const whatsappLink = `https://wa.me/${WHATSAPP_NUMBER}?text=${whatsappMessage}`;
 
                             return (
@@ -122,12 +131,10 @@ export default function RentalsStorefront() {
                                             </div>
                                         )}
 
-                                        {/* STATUS BADGE */}
-                                        <div className={`absolute top-4 right-4 text-white text-xs font-extrabold px-3 py-1 rounded shadow-md tracking-wide ${isAvailable ? 'bg-green-600 border border-green-500' : 'bg-red-600 border border-red-500'}`}>
-                                            {isAvailable ? 'AVAILABLE' : 'OUT ON RENT'}
+                                        <div className={`absolute top-4 right-4 text-white text-xs font-extrabold px-3 py-1 rounded shadow-md tracking-wide ${badgeColor}`}>
+                                            {badgeText}
                                         </div>
 
-                                        {/* CATEGORY BADGE */}
                                         {rental.category && rental.category !== 'Other' && (
                                             <div className="absolute top-4 left-4 bg-gray-900 bg-opacity-80 text-white text-xs font-bold px-3 py-1 rounded tracking-wide backdrop-blur-sm">
                                                 {rental.category}
@@ -147,7 +154,6 @@ export default function RentalsStorefront() {
                                             </p>
                                         )}
 
-                                        {/* RATE DISPLAY BOX */}
                                         <div className="mt-auto mb-6 bg-orange-50 border border-orange-100 rounded-lg p-4 shadow-sm">
                                             <div className="flex justify-between items-center border-b border-orange-200 pb-2 mb-2">
                                                 <span className="text-gray-600 font-bold text-sm uppercase tracking-wide">Daily Rate</span>
@@ -170,7 +176,6 @@ export default function RentalsStorefront() {
                 )}
             </main>
 
-            {/* FOOTER */}
             <footer className="bg-gray-900 text-gray-400 py-12 text-center border-t-4 border-gray-800 mt-auto">
                 <h2 className="font-extrabold text-2xl text-white mb-2 uppercase tracking-wide">Fine Edge Rentals</h2>
                 <p className="text-sm mb-4">Cuauhtémoc, Chihuahua, Mexico</p>
