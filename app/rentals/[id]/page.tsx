@@ -2,45 +2,64 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import TopNav from '../../../components/TopNav';
+import { useParams } from 'next/navigation'; // <-- THE NEW ROUTER HOOK
 
-export default function EquipmentDetail({ params }: { params: { id: string } }) {
+export default function EquipmentDetail() {
+    const params = useParams();
+    const id = params?.id; // <-- Safely extracts the ID from the URL
+
     const [equipment, setEquipment] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [dbError, setDbError] = useState<string | null>(null);
 
     // --- YOUR WHATSAPP NUMBER ---
     const WHATSAPP_NUMBER = "526251191400";
 
     useEffect(() => {
+        // If the URL hasn't fully loaded the ID yet, wait for it
+        if (!id) return;
+
         async function fetchEquipment() {
             const { data, error } = await supabase
                 .from('rental_fleet')
                 .select('*')
-                .eq('id', params.id)
+                .eq('id', id)
                 .single();
 
-            if (!error && data) {
+            if (error) {
+                console.error("Supabase Error:", error);
+                setDbError(error.message);
+            } else if (data) {
                 setEquipment(data);
             }
             setLoading(false);
         }
         fetchEquipment();
-    }, [params.id]);
+    }, [id]);
 
     if (loading) {
         return <div className="min-h-screen bg-gray-100 flex items-center justify-center font-bold text-xl text-gray-500 animate-pulse">Loading Equipment Details...</div>;
     }
 
+    // IF IT STILL FAILS, WE NOW HAVE A DEBUG READOUT
     if (!equipment) {
         return (
-            <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center">
-                <h1 className="text-3xl font-bold text-gray-800 mb-4">Equipment Not Found</h1>
+            <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center text-center p-6">
+                <h1 className="text-3xl font-bold text-gray-800 mb-2">Equipment Not Found</h1>
+                <p className="text-gray-500 mb-6">We couldn't find a machine with ID: <span className="font-mono bg-gray-200 px-2 py-1 rounded text-red-600">{id}</span></p>
+
+                {dbError && (
+                    <p className="text-xs text-red-500 mb-6 p-3 border border-red-200 bg-red-50 rounded shadow-sm max-w-md">
+                        <strong>Database Error:</strong> {dbError}
+                    </p>
+                )}
+
                 <a href="/rentals" className="text-orange-600 font-bold hover:underline">← Back to Fleet</a>
             </div>
         );
     }
 
     const isAvailable = equipment.status === 'Available';
-    // PRE-FILLED MESSAGE WITH THE SPECIFIC MACHINE SCANNED!
     const whatsappMessage = encodeURIComponent(`Hola, acabo de escanear el código QR del ${equipment.equipment_name} (S/N: ${equipment.serial_number || 'N/A'}). ¿Tienen disponibilidad?`);
     const whatsappLink = `https://wa.me/${WHATSAPP_NUMBER}?text=${whatsappMessage}`;
     const formatMXN = (amount: any) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount || 0);
