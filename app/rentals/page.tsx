@@ -9,7 +9,6 @@ export default function RentalsStorefront() {
     const [searchTerm, setSearchTerm] = useState('');
     const [activeCategory, setActiveCategory] = useState('All');
 
-    // --- YOUR OFFICIAL BUSINESS WHATSAPP NUMBER ---
     const WHATSAPP_NUMBER = "526251191400";
 
     useEffect(() => {
@@ -26,13 +25,17 @@ export default function RentalsStorefront() {
         setLoading(false);
     }
 
-    const dynamicCategories = ['All', ...Array.from(new Set(rentals.map(r => r.category || 'Other')))];
+    // 1. DYNAMIC CATEGORIES (Only counts active/visible machines)
+    const activeRentals = rentals.filter(r => r.status !== 'Retired');
+    const dynamicCategories = ['All', ...Array.from(new Set(activeRentals.map(r => r.category || 'Other')))];
 
+    // 2. FILTER OUT RETIRED MACHINES PERMANENTLY
     const filteredRentals = rentals.filter(r => {
+        const notRetired = r.status !== 'Retired';
         const matchesSearch = (r.equipment_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
             (r.serial_number || '').toLowerCase().includes(searchTerm.toLowerCase());
         const matchesCategory = activeCategory === 'All' || (r.category || 'Other') === activeCategory;
-        return matchesSearch && matchesCategory;
+        return notRetired && matchesSearch && matchesCategory;
     });
 
     const formatMXN = (amount: any) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount || 0);
@@ -100,8 +103,6 @@ export default function RentalsStorefront() {
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                         {filteredRentals.map((rental) => {
-
-                            // THE NEW LOGIC ENGINE THAT KNOWS ALL 4 STATUSES
                             let badgeText = 'OUT ON RENT';
                             let badgeColor = 'bg-red-600 border border-red-500';
                             let whatsappMessage = encodeURIComponent(`Hola, me interesa rentar el equipo: ${rental.equipment_name} (S/N: ${rental.serial_number}). ¿Tienen disponibilidad?`);
@@ -156,11 +157,11 @@ export default function RentalsStorefront() {
 
                                         <div className="mt-auto mb-6 bg-orange-50 border border-orange-100 rounded-lg p-4 shadow-sm">
                                             <div className="flex justify-between items-center border-b border-orange-200 pb-2 mb-2">
-                                                <span className="text-gray-600 font-bold text-sm uppercase tracking-wide">Daily Rate</span>
+                                                <span className="text-gray-600 font-bold text-sm uppercase tracking-wide">Daily Rate <span className="text-orange-600">(MXN)</span></span>
                                                 <span className="text-orange-700 font-extrabold text-lg">{formatMXN(rental.daily_rate)}</span>
                                             </div>
                                             <div className="flex justify-between items-center">
-                                                <span className="text-gray-600 font-bold text-sm uppercase tracking-wide">Weekly Rate</span>
+                                                <span className="text-gray-600 font-bold text-sm uppercase tracking-wide">Weekly Rate <span className="text-orange-600">(MXN)</span></span>
                                                 <span className="text-orange-700 font-extrabold text-lg">{formatMXN(rental.weekly_rate)}</span>
                                             </div>
                                         </div>
@@ -179,10 +180,6 @@ export default function RentalsStorefront() {
             <footer className="bg-gray-900 text-gray-400 py-12 text-center border-t-4 border-gray-800 mt-auto">
                 <h2 className="font-extrabold text-2xl text-white mb-2 uppercase tracking-wide">Fine Edge Rentals</h2>
                 <p className="text-sm mb-4">Cuauhtémoc, Chihuahua, Mexico</p>
-                <div className="flex justify-center gap-6 text-sm mb-6">
-                    <a href={`https://wa.me/${WHATSAPP_NUMBER}`} target="_blank" rel="noopener noreferrer" className="text-orange-400 hover:text-orange-300 transition font-bold">WhatsApp Us</a>
-                    <a href="mailto:fineedgemachines@gmail.com" className="text-orange-400 hover:text-orange-300 transition font-bold">fineedgemachines@gmail.com</a>
-                </div>
                 <p className="text-xs text-gray-600">&copy; {new Date().getFullYear()} Fine Edge Rentals. All rights reserved.</p>
             </footer>
         </div>

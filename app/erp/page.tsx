@@ -3,8 +3,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 
 const COLUMNS = ['Intake', 'Refurbishing', 'Ready', 'Sold'];
-// NEW: Added 'In Transit' to the Rental Board!
-const RENTAL_COLUMNS = ['In Transit', 'Available', 'Out on Rent', 'Maintenance'];
+const RENTAL_COLUMNS = ['In Transit', 'Available', 'Out on Rent', 'Maintenance', 'Retired'];
 
 export default function ERPPortal() {
   // --- SECURITY: HARD LOCK SCREEN ---
@@ -48,13 +47,25 @@ export default function ERPPortal() {
   const [sellForm, setSellForm] = useState({ sale_price: '', sale_iva: '', is_paid: false, invoice_date: '', due_date: '' });
   const [saleInvoiceFile, setSaleInvoiceFile] = useState<any>(null);
 
-  // --- STATE: RENTALS ---
+  // --- STATE: RENTALS & RENTAL FINANCES ---
   const [rentals, setRentals] = useState<any[]>([]);
   const [isAddingRental, setIsAddingRental] = useState(false);
-  const [rentalForm, setRentalForm] = useState({ equipment_name: '', category: '', serial_number: '', daily_rate: '', weekly_rate: '', description: '' });
+  const [rentalForm, setRentalForm] = useState({ equipment_name: '', category: '', serial_number: '', purchase_cost: '', daily_rate: '', weekly_rate: '', description: '' });
   const [editingRental, setEditingRental] = useState<any>(null);
-  const [editRentalForm, setEditRentalForm] = useState<any>({ equipment_name: '', category: '', serial_number: '', daily_rate: '', weekly_rate: '', description: '', current_customer: '' });
+  const [editRentalForm, setEditRentalForm] = useState<any>({ equipment_name: '', category: '', serial_number: '', purchase_cost: '', daily_rate: '', weekly_rate: '', description: '', current_customer: '' });
   const [rentalImageFile, setRentalImageFile] = useState<any>(null);
+  const [stickerRental, setStickerRental] = useState<any>(null); // NEW: QR Sticker Overlay State
+
+  const [rentalLedger, setRentalLedger] = useState<any[]>([]);
+  const [isAddingRentalPayment, setIsAddingRentalPayment] = useState(false);
+  const [rentalPaymentForm, setRentalPaymentForm] = useState({ payment_date: '', equipment_id: '', customer_name: '', amount_paid: '', notes: '' });
+  const [rentalPaymentFile, setRentalPaymentFile] = useState<any>(null);
+
+  const [rentalMaintenance, setRentalMaintenance] = useState<any[]>([]);
+  const [isAddingMaintenance, setIsAddingMaintenance] = useState(false);
+  const [rentalMaintenanceForm, setRentalMaintenanceForm] = useState({ service_date: '', equipment_id: '', description: '', cost: '', invoice_number: '' });
+  const [rentalMaintenanceFile, setRentalMaintenanceFile] = useState<any>(null);
+  const [rentalLedgerView, setRentalLedgerView] = useState<'income' | 'maintenance'>('income');
 
   // --- STATE: INVOICES & PROVIDERS ---
   const [providers, setProviders] = useState<any[]>([]);
@@ -92,6 +103,8 @@ export default function ERPPortal() {
     if (isAuthenticated) {
       fetchInventory();
       fetchRentals();
+      fetchRentalLedger();
+      fetchRentalMaintenance();
       fetchProvidersAndInvoices();
       fetchSatPayments();
       fetchCashBox();
@@ -110,6 +123,20 @@ export default function ERPPortal() {
       .select('*')
       .order('equipment_name', { ascending: true });
     if (!error) setRentals(data || []);
+  }
+
+  async function fetchRentalLedger() {
+    const { data, error } = await supabase.from('rental_ledger')
+      .select('*, rental_fleet(equipment_name, serial_number)')
+      .order('payment_date', { ascending: false });
+    if (!error) setRentalLedger(data || []);
+  }
+
+  async function fetchRentalMaintenance() {
+    const { data, error } = await supabase.from('rental_maintenance')
+      .select('*, rental_fleet(equipment_name, serial_number)')
+      .order('service_date', { ascending: false });
+    if (!error) setRentalMaintenance(data || []);
   }
 
   async function fetchProvidersAndInvoices() {
@@ -135,7 +162,9 @@ export default function ERPPortal() {
       Number(machine.import_fee || 0) +
       (machine.repair_logs?.reduce((sum: any, log: any) => sum + Number(log.part_cost), 0) || 0);
   };
+
   const formatMXN = (amount: any) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
+  const formatUSD = (amount: any) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 
   const inShopMachines = machines.filter((m: any) => m.status !== 'Sold');
   const soldMachines = machines.filter((m: any) => m.status === 'Sold');
@@ -159,6 +188,10 @@ export default function ERPPortal() {
   const netCashFlow = totalCashIn - totalCashOut;
 
   const cashBoxTotal = cashBoxLogs.reduce((sum: any, log: any) => sum + Number(log.amount), 0);
+
+  const totalRentalRevenue = rentalLedger.reduce((sum: any, log: any) => sum + Number(log.amount_paid), 0);
+  const totalRentalMaintenanceCost = rentalMaintenance.reduce((sum: any, log: any) => sum + Number(log.cost), 0);
+  const netRentalProfit = totalRentalRevenue - totalRentalMaintenanceCost;
 
   const filteredMachines = machines.filter((machine: any) =>
     machine.machine_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -223,7 +256,6 @@ export default function ERPPortal() {
     exportToCSV(formattedData, `FineEdge_Invoices_${new Date().toISOString().split('T')[0]}`);
   };
 
-  // --- KANBAN LOGIC (MACHINERY) ---
   const handleDragStart = (e: any, machineId: any) => { if (!isAdmin) return; e.dataTransfer.setData('machineId', machineId); e.dataTransfer.setData('type', 'machine'); };
   const handleDragOver = (e: any) => { if (!isAdmin) return; e.preventDefault(); };
 
@@ -243,7 +275,6 @@ export default function ERPPortal() {
     await supabase.from('inventory').update({ status: newStatus, sale_price: 0, sale_iva: 0, is_paid: false, invoice_date: null, due_date: null }).eq('id', machineId);
   };
 
-  // --- KANBAN LOGIC (RENTALS) ---
   const handleRentalDragStart = (e: any, rentalId: any) => { if (!isAdmin) return; e.dataTransfer.setData('rentalId', rentalId); e.dataTransfer.setData('type', 'rental'); };
 
   const handleRentalDrop = async (e: any, newStatus: any) => {
@@ -259,6 +290,10 @@ export default function ERPPortal() {
       if (newStatus === 'Out on Rent') {
         customerName = window.prompt("Who is renting this equipment? (Enter Customer Name):");
         if (customerName === null) return;
+      }
+      if (newStatus === 'Retired') {
+        const confirmRetire = window.confirm("Are you sure you want to retire this machine? It will be removed from the public site.");
+        if (!confirmRetire) return;
       }
       setRentals((prev: any[]) => prev.map((r: any) => String(r.id) === String(rentalId) ? { ...r, status: newStatus, current_customer: customerName } : r));
       const { error } = await supabase.from('rental_fleet').update({ status: newStatus, current_customer: customerName }).eq('id', rentalId);
@@ -408,12 +443,13 @@ export default function ERPPortal() {
 
     const { error } = await supabase.from('rental_fleet').insert([{
       equipment_name: rentalForm.equipment_name, category: rentalForm.category || 'Other', serial_number: rentalForm.serial_number,
+      purchase_cost: parseFloat(rentalForm.purchase_cost) || 0,
       daily_rate: parseFloat(rentalForm.daily_rate) || 0, weekly_rate: parseFloat(rentalForm.weekly_rate) || 0,
       description: rentalForm.description || null, status: 'Available', image_url: imageUrl
     }]);
 
     if (!error) {
-      setIsAddingRental(false); setRentalForm({ equipment_name: '', category: '', serial_number: '', daily_rate: '', weekly_rate: '', description: '' });
+      setIsAddingRental(false); setRentalForm({ equipment_name: '', category: '', serial_number: '', purchase_cost: '', daily_rate: '', weekly_rate: '', description: '' });
       setRentalImageFile(null); fetchRentals();
     } else { alert("Database error: " + error.message); }
     setIsUploading(false);
@@ -425,6 +461,7 @@ export default function ERPPortal() {
     setRentalImageFile(null);
     setEditRentalForm({
       equipment_name: rental.equipment_name || '', category: rental.category || '', serial_number: rental.serial_number || '',
+      purchase_cost: rental.purchase_cost || '',
       daily_rate: rental.daily_rate || '', weekly_rate: rental.weekly_rate || '', description: rental.description || '', current_customer: rental.current_customer || ''
     });
   }
@@ -433,7 +470,6 @@ export default function ERPPortal() {
     e.preventDefault();
     if (!isAdmin) return;
     setIsUploading(true);
-
     let imageUrl = editingRental.image_url;
 
     if (rentalImageFile) {
@@ -445,6 +481,7 @@ export default function ERPPortal() {
 
     const payload: any = {
       equipment_name: editRentalForm.equipment_name, category: editRentalForm.category || 'Other', serial_number: editRentalForm.serial_number,
+      purchase_cost: parseFloat(editRentalForm.purchase_cost) || 0,
       daily_rate: parseFloat(editRentalForm.daily_rate) || 0, weekly_rate: parseFloat(editRentalForm.weekly_rate) || 0,
       description: editRentalForm.description || null, current_customer: editRentalForm.current_customer || null, image_url: imageUrl
     };
@@ -452,6 +489,66 @@ export default function ERPPortal() {
     const { error } = await supabase.from('rental_fleet').update(payload).eq('id', editingRental.id);
     if (!error) { setEditingRental(null); setRentalImageFile(null); fetchRentals(); }
     else { alert("Database error: " + error.message); }
+    setIsUploading(false);
+  }
+
+  async function handleAddRentalPayment(e: any) {
+    e.preventDefault();
+    if (!isAdmin) return;
+    setIsUploading(true);
+    let receiptUrl = null;
+
+    if (rentalPaymentFile) {
+      const fileName = `rental-pay-${Date.now()}-${sanitizeFileName(rentalPaymentFile.name)}`;
+      const { error: uploadError } = await supabase.storage.from('invoices').upload(fileName, rentalPaymentFile);
+      if (!uploadError) receiptUrl = supabase.storage.from('invoices').getPublicUrl(fileName).data.publicUrl;
+    }
+
+    const { error } = await supabase.from('rental_ledger').insert([{
+      payment_date: rentalPaymentForm.payment_date || new Date().toISOString().split('T')[0],
+      equipment_id: parseInt(rentalPaymentForm.equipment_id),
+      customer_name: rentalPaymentForm.customer_name,
+      amount_paid: parseFloat(rentalPaymentForm.amount_paid) || 0,
+      notes: rentalPaymentForm.notes,
+      receipt_url: receiptUrl
+    }]);
+
+    if (!error) {
+      setIsAddingRentalPayment(false);
+      setRentalPaymentForm({ payment_date: '', equipment_id: '', customer_name: '', amount_paid: '', notes: '' });
+      setRentalPaymentFile(null);
+      fetchRentalLedger();
+    } else { alert("Database error: " + error.message); }
+    setIsUploading(false);
+  }
+
+  async function handleAddRentalMaintenance(e: any) {
+    e.preventDefault();
+    if (!isAdmin) return;
+    setIsUploading(true);
+    let invoiceUrl = null;
+
+    if (rentalMaintenanceFile) {
+      const fileName = `rental-maint-${Date.now()}-${sanitizeFileName(rentalMaintenanceFile.name)}`;
+      const { error: uploadError } = await supabase.storage.from('invoices').upload(fileName, rentalMaintenanceFile);
+      if (!uploadError) invoiceUrl = supabase.storage.from('invoices').getPublicUrl(fileName).data.publicUrl;
+    }
+
+    const { error } = await supabase.from('rental_maintenance').insert([{
+      service_date: rentalMaintenanceForm.service_date || new Date().toISOString().split('T')[0],
+      equipment_id: parseInt(rentalMaintenanceForm.equipment_id),
+      description: rentalMaintenanceForm.description,
+      cost: parseFloat(rentalMaintenanceForm.cost) || 0,
+      invoice_number: rentalMaintenanceForm.invoice_number,
+      invoice_url: invoiceUrl
+    }]);
+
+    if (!error) {
+      setIsAddingMaintenance(false);
+      setRentalMaintenanceForm({ service_date: '', equipment_id: '', description: '', cost: '', invoice_number: '' });
+      setRentalMaintenanceFile(null);
+      fetchRentalMaintenance();
+    } else { alert("Database error: " + error.message); }
     setIsUploading(false);
   }
 
@@ -554,6 +651,7 @@ export default function ERPPortal() {
 
   const calculateIva = (amount: any) => (parseFloat(amount) * 0.16).toFixed(2);
 
+
   // --- SECURITY LOCK SCREEN ---
   if (!isAuthenticated) {
     return (
@@ -583,9 +681,10 @@ export default function ERPPortal() {
   }
 
   // --- MAIN ERP DASHBOARD ---
+  // Ensure the main app hides if we are trying to print a spec sheet OR a QR sticker
   return (
     <>
-      <div className={`min-h-screen bg-gray-100 p-8 ${specSheetMachine ? 'print:hidden hidden' : ''}`}>
+      <div className={`min-h-screen bg-gray-100 p-8 ${(specSheetMachine || stickerRental) ? 'print:hidden hidden' : ''}`}>
 
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-4">
@@ -601,13 +700,13 @@ export default function ERPPortal() {
             <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide mb-1">Active Shop Machines</h3>
             <p className="text-3xl font-bold text-gray-800">{inShopMachines.length}</p>
           </div>
-          <div className="flex-1 min-w-[200px] bg-white p-6 rounded-lg shadow border-l-4 border-orange-500">
+          <div className="flex-1 min-w-[200px] bg-white p-6 rounded-lg shadow border-l-4 border-blue-500">
             <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide mb-1">Current Inventory Value</h3>
-            <p className="text-3xl font-bold text-orange-600">{formatMXN(currentInventoryValue)}</p>
+            <p className="text-3xl font-bold text-blue-600">{formatUSD(currentInventoryValue)}</p>
           </div>
           <div className="flex-1 min-w-[200px] bg-white p-6 rounded-lg shadow border-l-4 border-gray-400">
             <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide mb-1">Total Expenses</h3>
-            <p className="text-3xl font-bold text-gray-600">{formatMXN(totalInvoicesValue)}</p>
+            <p className="text-3xl font-bold text-gray-600">{formatUSD(totalInvoicesValue)}</p>
           </div>
 
           <div className={`flex-1 min-w-[250px] bg-white p-6 rounded-lg shadow border-l-4 ${currentIvaOwed > 0 ? 'border-red-500' : 'border-teal-500'}`}>
@@ -615,10 +714,10 @@ export default function ERPPortal() {
               <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide">Current IVA Owed</h3>
               {isAdmin && <button onClick={() => setIsAddingSatPayment(true)} className="text-xs bg-red-50 text-red-600 hover:bg-red-100 font-bold px-2 py-1 rounded border border-red-200 transition shadow-sm">+ Pay SAT</button>}
             </div>
-            <p className={`text-3xl font-bold ${currentIvaOwed > 0 ? 'text-red-600' : 'text-teal-600'}`}>{formatMXN(currentIvaOwed)}</p>
+            <p className={`text-3xl font-bold ${currentIvaOwed > 0 ? 'text-red-600' : 'text-teal-600'}`}>{formatUSD(currentIvaOwed)}</p>
             <div className="text-xs text-gray-600 mt-3 pt-2 border-t flex flex-col gap-1">
-              <div className="flex justify-between"><span>Accrued Balance:</span> <span className="font-semibold">{formatMXN(grossIvaBalance)}</span></div>
-              <div className="flex justify-between"><span>Paid to SAT:</span> <span className="font-semibold text-green-600">-{formatMXN(totalIvaPaidToSat)}</span></div>
+              <div className="flex justify-between"><span>Accrued Balance:</span> <span className="font-semibold">{formatUSD(grossIvaBalance)}</span></div>
+              <div className="flex justify-between"><span>Paid to SAT:</span> <span className="font-semibold text-green-600">-{formatUSD(totalIvaPaidToSat)}</span></div>
             </div>
           </div>
 
@@ -630,15 +729,15 @@ export default function ERPPortal() {
                 <input type="number" step="0.01" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} className="w-16 p-1 text-xs border rounded text-black font-bold focus:outline-none focus:ring-1 focus:ring-green-500 bg-gray-50" disabled={!isAdmin} />
               </div>
             </div>
-            <p className={`text-3xl font-bold ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatMXN(netProfit)}</p>
+            <p className={`text-3xl font-bold ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatUSD(netProfit)}</p>
             <div className="mt-2 inline-block bg-green-50 border border-green-200 rounded px-2 py-1">
-              <span className="text-sm font-bold text-green-800">USD {parseFloat(exchangeRate) > 0 ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(netProfit / parseFloat(exchangeRate)) : '$0.00'}</span>
+              <span className="text-sm font-bold text-green-800">MXN {parseFloat(exchangeRate) > 0 ? formatMXN(netProfit * parseFloat(exchangeRate)) : '$0.00'}</span>
             </div>
           </div>
 
           <div className={`flex-1 min-w-[200px] bg-white p-6 rounded-lg shadow border-l-4 ${netCashFlow >= 0 ? 'border-purple-500' : 'border-red-500'}`}>
             <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wide mb-1">Net Cash Flow</h3>
-            <p className={`text-3xl font-bold ${netCashFlow >= 0 ? 'text-purple-600' : 'text-red-600'}`}>{formatMXN(netCashFlow)}</p>
+            <p className={`text-3xl font-bold ${netCashFlow >= 0 ? 'text-purple-600' : 'text-red-600'}`}>{formatUSD(netCashFlow)}</p>
             <p className="text-xs text-gray-400 mt-1">Total in vs. Total out</p>
           </div>
 
@@ -659,10 +758,11 @@ export default function ERPPortal() {
 
         <div className="flex justify-between items-end mb-8 border-b pb-4">
           <div className="flex gap-4">
-            <button onClick={() => setActiveTab('kanban')} className={`px-6 py-2 rounded font-bold transition ${activeTab === 'kanban' ? 'bg-blue-600 text-white shadow' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>Machinery Board</button>
-            <button onClick={() => setActiveTab('rentals')} className={`px-6 py-2 rounded font-bold transition ${activeTab === 'rentals' ? 'bg-orange-600 text-white shadow' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>Rental Fleet</button>
-            <button onClick={() => setActiveTab('invoices')} className={`px-6 py-2 rounded font-bold transition ${activeTab === 'invoices' ? 'bg-blue-600 text-white shadow' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>Parts & Purchases</button>
-            <button onClick={() => setActiveTab('sat')} className={`px-6 py-2 rounded font-bold transition ${activeTab === 'sat' ? 'bg-red-600 text-white shadow' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>SAT Records</button>
+            <button onClick={() => setActiveTab('kanban')} className={`px-6 py-2 rounded font-bold transition ${activeTab === 'kanban' ? 'bg-blue-600 text-white shadow' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>🏗️ Machinery Board</button>
+            <button onClick={() => setActiveTab('rentals')} className={`px-6 py-2 rounded font-bold transition ${activeTab === 'rentals' ? 'bg-orange-600 text-white shadow' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>🚜 Rental Fleet</button>
+            <button onClick={() => setActiveTab('invoices')} className={`px-6 py-2 rounded font-bold transition ${activeTab === 'invoices' ? 'bg-blue-600 text-white shadow' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>💰 Parts & Purchases</button>
+            <button onClick={() => setActiveTab('sat')} className={`px-6 py-2 rounded font-bold transition ${activeTab === 'sat' ? 'bg-red-600 text-white shadow' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>🏛️ SAT Records</button>
+            <button onClick={() => setActiveTab('rental_finances')} className={`px-6 py-2 rounded font-bold transition ${activeTab === 'rental_finances' ? 'bg-green-600 text-white shadow' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>📈 Rental Finances</button>
           </div>
 
           {activeTab === 'kanban' && (
@@ -689,8 +789,16 @@ export default function ERPPortal() {
               <button onClick={exportInvoices} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold shadow transition">📊 Export CSV</button>
             </div>
           )}
+          {activeTab === 'rental_finances' && isAdmin && (
+            <div className="flex gap-4 items-center">
+              <button onClick={() => setIsAddingMaintenance(true)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-bold shadow transition">+ Log Maintenance</button>
+              <button onClick={() => setIsAddingRentalPayment(true)} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold shadow transition">+ Log Rental Income</button>
+            </div>
+          )}
         </div>
 
+
+        {/* ==================== TAB 1: KANBAN BOARD (MACHINERY - USD) ==================== */}
         {activeTab === 'kanban' && (
           <div className="flex gap-6 overflow-x-auto pb-4">
             {COLUMNS.map(column => (
@@ -719,8 +827,8 @@ export default function ERPPortal() {
 
                         {machine.status === 'Sold' && (
                           <div className="bg-gray-50 border p-2 rounded text-xs mb-2 mt-2">
-                            <span className="font-bold text-gray-700">Sold for:</span> {formatMXN(machine.sale_price)} <br />
-                            <span className="font-bold text-gray-700">IVA:</span> {formatMXN(machine.sale_iva)} <br />
+                            <span className="font-bold text-gray-700">Sold for:</span> {formatUSD(machine.sale_price)} <br />
+                            <span className="font-bold text-gray-700">IVA:</span> {formatUSD(machine.sale_iva)} <br />
 
                             {!machine.is_paid && (machine.invoice_date || machine.due_date) && (
                               <div className="mt-2 mb-2 bg-yellow-50 border border-yellow-200 p-2 rounded text-xs flex justify-between items-center">
@@ -729,12 +837,12 @@ export default function ERPPortal() {
                                   <span className="font-bold text-gray-700">Due Date:</span> <span className={isOverdue ? 'text-red-600 font-extrabold' : 'text-gray-800 font-bold'}>{machine.due_date || 'N/A'} {isOverdue && '(OVERDUE)'}</span>
                                 </div>
                                 {machine.due_date && (
-                                  <button onClick={(e) => handleAddToCalendar(e, `Payment Due: ${machine.machine_name}`, machine.due_date, `Expected Amount: ${formatMXN(machine.sale_price)}`)} className="text-xl hover:scale-110 transition pr-2" title="Add to Calendar">📅</button>
+                                  <button onClick={(e) => handleAddToCalendar(e, `Payment Due: ${machine.machine_name}`, machine.due_date, `Expected Amount: ${formatUSD(machine.sale_price)}`)} className="text-xl hover:scale-110 transition pr-2" title="Add to Calendar">📅</button>
                                 )}
                               </div>
                             )}
 
-                            <span className={`font-bold mt-2 block border-t pt-1 ${machineProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>Profit: {formatMXN(machineProfit)}</span>
+                            <span className={`font-bold mt-2 block border-t pt-1 ${machineProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>Profit: {formatUSD(machineProfit)}</span>
                             <div className="mt-2 pt-2 border-t flex justify-between items-center">
                               <span className="font-bold text-gray-600">Payment:</span>
                               <button onClick={(e) => handleTogglePaid(e, machine.id, machine.is_paid)} disabled={!isAdmin} className={`px-2 py-1 rounded font-bold text-xs transition shadow-sm ${machine.is_paid ? 'bg-green-100 text-green-700 border border-green-300' : 'bg-yellow-100 text-yellow-700 border border-yellow-300'} ${!isAdmin && 'cursor-default'}`}>
@@ -746,7 +854,7 @@ export default function ERPPortal() {
 
                         <div className="flex justify-between items-center text-sm font-medium text-gray-700 mt-4 border-t pt-2 border-b pb-2 mb-2">
                           <span>Total Invested:</span>
-                          <span className="text-gray-800 font-bold">{formatMXN(calculateTotalCost(machine))}</span>
+                          <span className="text-gray-800 font-bold">{formatUSD(calculateTotalCost(machine))}</span>
                         </div>
 
                         <div className="flex gap-2 text-xs font-bold mt-2">
@@ -767,7 +875,7 @@ export default function ERPPortal() {
           </div>
         )}
 
-        {/* KANBAN BOARD (RENTALS) WITH IN TRANSIT COLUMN */}
+        {/* ==================== TAB 2: KANBAN BOARD (RENTALS - MXN) ==================== */}
         {activeTab === 'rentals' && (
           <div className="flex gap-6 overflow-x-auto pb-4">
             {RENTAL_COLUMNS.map(column => (
@@ -775,7 +883,7 @@ export default function ERPPortal() {
                 <h2 className="font-bold text-lg mb-4 text-gray-700 uppercase tracking-wide border-b-2 border-gray-300 pb-2">{column} ({filteredRentals.filter((r: any) => r.status === column).length})</h2>
                 <div className="flex flex-col gap-4">
                   {filteredRentals.filter((r: any) => r.status === column).map((rental: any) => (
-                    <div key={rental.id} draggable={isAdmin} onDragStart={(e) => handleRentalDragStart(e, rental.id)} className={`bg-white p-4 rounded shadow ${isAdmin ? 'cursor-grab active:cursor-grabbing' : ''} border-l-4 ${column === 'Available' ? 'border-green-500' : column === 'Out on Rent' ? 'border-orange-500' : column === 'In Transit' ? 'border-blue-500' : 'border-red-500'} hover:shadow-lg transition transform hover:-translate-y-1`}>
+                    <div key={rental.id} draggable={isAdmin} onDragStart={(e) => handleRentalDragStart(e, rental.id)} className={`bg-white p-4 rounded shadow ${isAdmin ? 'cursor-grab active:cursor-grabbing' : ''} border-l-4 ${column === 'Available' ? 'border-green-500' : column === 'Out on Rent' ? 'border-orange-500' : column === 'In Transit' ? 'border-blue-500' : column === 'Retired' ? 'border-gray-800 opacity-75' : 'border-red-500'} hover:shadow-lg transition transform hover:-translate-y-1`}>
                       {rental.image_url && <img src={rental.image_url} alt="Equipment" className="w-full h-32 object-cover rounded mb-3 border" />}
                       <h3 className="font-bold text-gray-800">{rental.equipment_name}</h3>
                       {rental.category && rental.category !== 'Other' && (
@@ -784,14 +892,20 @@ export default function ERPPortal() {
                       <p className="text-sm text-gray-500 mb-2">SN: {rental.serial_number || 'N/A'}</p>
 
                       <div className="bg-gray-50 border p-2 rounded text-xs mb-3">
-                        <div className="flex justify-between mb-1"><span className="font-bold text-gray-700">Daily:</span> <span className="font-semibold">{formatMXN(rental.daily_rate)}</span></div>
-                        <div className="flex justify-between"><span className="font-bold text-gray-700">Weekly:</span> <span className="font-semibold">{formatMXN(rental.weekly_rate)}</span></div>
+                        <div className="flex justify-between mb-1"><span className="font-bold text-gray-700">Daily (MXN):</span> <span className="font-semibold">{formatMXN(rental.daily_rate)}</span></div>
+                        <div className="flex justify-between"><span className="font-bold text-gray-700">Weekly (MXN):</span> <span className="font-semibold">{formatMXN(rental.weekly_rate)}</span></div>
                       </div>
 
                       {column === 'Out on Rent' && rental.current_customer && (
                         <div className="bg-orange-50 border border-orange-200 p-2 rounded text-xs mb-3">
                           <span className="font-bold text-orange-800 uppercase block mb-1">Current Renter:</span>
                           <span className="text-gray-800 font-semibold">{rental.current_customer}</span>
+                        </div>
+                      )}
+
+                      {column === 'Retired' && (
+                        <div className="bg-gray-200 border border-gray-300 p-2 rounded text-xs mb-3 text-center font-bold text-gray-600 uppercase tracking-widest">
+                          Out of Service
                         </div>
                       )}
 
@@ -808,254 +922,7 @@ export default function ERPPortal() {
           </div>
         )}
 
-        {isAdding && isAdmin && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto border-t-8 border-blue-600">
-              <h2 className="text-2xl font-bold mb-4 text-gray-800">Log New Machine</h2>
-              <form onSubmit={handleAddMachine} className="flex flex-col gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Machine Photo</label>
-                  <input type="file" accept="image/*" onChange={(e: any) => setImageFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Pedimento Document</label>
-                  <input type="file" accept=".pdf,image/*" onChange={(e: any) => setPedimentoFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
-                </div>
-                <input required placeholder="Machine Name" className="p-2 border rounded text-black" value={formData.machine_name} onChange={e => setFormData({ ...formData, machine_name: e.target.value })} />
-                <input required placeholder="Category (e.g., Laser, CNC, Welder)" className="p-2 border rounded text-black bg-gray-50 font-semibold" value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })} />
-                <input required placeholder="Serial Number" className="p-2 border rounded text-black" value={formData.serial_number} onChange={e => setFormData({ ...formData, serial_number: e.target.value })} />
-                <textarea placeholder="Machine Description / Specs" className="p-2 border rounded text-black h-24" value={formData.description || ''} onChange={e => setFormData({ ...formData, description: e.target.value })} />
-                <input type="url" placeholder="YouTube/Drive Video Link (Optional)" className="p-2 border rounded text-black" value={formData.video_url} onChange={e => setFormData({ ...formData, video_url: e.target.value })} />
-                <div className="flex gap-4">
-                  <div className="w-1/2">
-                    <label className="block text-xs font-bold text-gray-500 uppercase">Purchase Price</label>
-                    <input type="number" step="0.01" className="p-2 w-full border rounded text-black" value={formData.purchase_price} onChange={e => setFormData({ ...formData, purchase_price: e.target.value })} />
-                  </div>
-                  <div className="w-1/2">
-                    <label className="flex justify-between text-xs font-bold text-gray-500 uppercase">
-                      <span>IVA Paid</span>
-                      <button type="button" tabIndex={-1} onClick={() => setFormData({ ...formData, purchase_iva: calculateIva(formData.purchase_price || 0) })} className="text-blue-600 hover:underline">Auto 16%</button>
-                    </label>
-                    <input type="number" step="0.01" className="p-2 w-full border rounded text-black text-red-600" value={formData.purchase_iva} onChange={e => setFormData({ ...formData, purchase_iva: e.target.value })} />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase">Shipping & Import (No IVA)</label>
-                  <div className="flex gap-4 mt-1">
-                    <input type="number" step="0.01" placeholder="Shipping Cost" className="p-2 w-1/2 border rounded text-black" value={formData.shipping_in_cost} onChange={e => setFormData({ ...formData, shipping_in_cost: e.target.value })} />
-                    <input type="number" step="0.01" placeholder="Import Fee" className="p-2 w-1/2 border rounded text-black" value={formData.import_fee} onChange={e => setFormData({ ...formData, import_fee: e.target.value })} />
-                  </div>
-                </div>
-                <div className="flex justify-end gap-2 mt-4">
-                  <button type="button" onClick={() => setIsAdding(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
-                  <button type="submit" disabled={isUploading} className="px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-700">Save Machine</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {editingMachine && isAdmin && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-blue-500 max-h-[90vh] overflow-y-auto">
-              <h2 className="text-2xl font-bold mb-4 text-gray-800">Edit Machine Details</h2>
-              <form onSubmit={handleUpdateMachine} className="flex flex-col gap-4">
-                <input required placeholder="Machine Name" className="p-2 border rounded text-black" value={editFormData.machine_name} onChange={e => setEditFormData({ ...editFormData, machine_name: e.target.value })} />
-                <input required placeholder="Category (e.g., Laser, CNC, Welder)" className="p-2 border rounded text-black bg-gray-50 font-semibold" value={editFormData.category} onChange={e => setEditFormData({ ...editFormData, category: e.target.value })} />
-                <input required placeholder="Serial Number" className="p-2 border rounded text-black" value={editFormData.serial_number} onChange={e => setEditFormData({ ...editFormData, serial_number: e.target.value })} />
-                <textarea placeholder="Machine Description / Specs" className="p-2 border rounded text-black h-24" value={editFormData.description || ''} onChange={e => setEditFormData({ ...editFormData, description: e.target.value })} />
-                <input type="url" placeholder="YouTube/Drive Video Link (Optional)" className="p-2 border rounded text-black" value={editFormData.video_url} onChange={e => setEditFormData({ ...editFormData, video_url: e.target.value })} />
-                <div className="flex gap-4">
-                  <div className="w-1/2">
-                    <label className="block text-xs font-bold text-gray-500 uppercase">Purchase Price</label>
-                    <input type="number" step="0.01" className="p-2 w-full border rounded text-black" value={editFormData.purchase_price} onChange={e => setEditFormData({ ...editFormData, purchase_price: e.target.value })} />
-                  </div>
-                  <div className="w-1/2">
-                    <label className="flex justify-between text-xs font-bold text-gray-500 uppercase">
-                      <span>IVA Paid</span>
-                      <button type="button" tabIndex={-1} onClick={() => setEditFormData({ ...editFormData, purchase_iva: calculateIva(editFormData.purchase_price || 0) })} className="text-blue-600 hover:underline">Auto 16%</button>
-                    </label>
-                    <input type="number" step="0.01" className="p-2 w-full border rounded text-black text-red-600" value={editFormData.purchase_iva} onChange={e => setEditFormData({ ...editFormData, purchase_iva: e.target.value })} />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase">Shipping & Import (No IVA)</label>
-                  <div className="flex gap-4 mt-1">
-                    <input type="number" step="0.01" placeholder="Shipping Cost" className="p-2 w-1/2 border rounded text-black" value={editFormData.shipping_in_cost} onChange={e => setEditFormData({ ...editFormData, shipping_in_cost: e.target.value })} />
-                    <input type="number" step="0.01" placeholder="Import Fee" className="p-2 w-1/2 border rounded text-black" value={editFormData.import_fee} onChange={e => setEditFormData({ ...editFormData, import_fee: e.target.value })} />
-                  </div>
-                </div>
-                {editingMachine.status === 'Sold' && (
-                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded mt-2">
-                    <h3 className="text-xs font-bold text-gray-700 mb-2 uppercase">Accounts Receivable Dates</h3>
-                    <div className="flex gap-4">
-                      <div className="w-1/2">
-                        <label className="block text-xs font-bold text-gray-500 mb-1">Invoice Sent</label>
-                        <input type="date" className="p-2 w-full border rounded text-black" value={editFormData.invoice_date} onChange={e => setEditFormData({ ...editFormData, invoice_date: e.target.value })} />
-                      </div>
-                      <div className="w-1/2">
-                        <label className="block text-xs font-bold text-gray-500 mb-1">Due Date</label>
-                        <input type="date" className="p-2 w-full border rounded text-black" value={editFormData.due_date} onChange={e => setEditFormData({ ...editFormData, due_date: e.target.value })} />
-                      </div>
-                    </div>
-                  </div>
-                )}
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1 mt-2">Upload/Replace Pedimento</label>
-                  <input type="file" accept=".pdf,image/*" onChange={(e: any) => setPedimentoFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
-                  {editingMachine.pedimento_url && <p className="text-xs text-blue-600 mt-1">A pedimento is currently attached.</p>}
-                </div>
-                <div className="flex justify-end gap-2 mt-4">
-                  <button type="button" onClick={() => setEditingMachine(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
-                  <button type="submit" disabled={isUploading} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold">Update Details</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {isAddingRental && isAdmin && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto border-t-8 border-orange-500">
-              <h2 className="text-2xl font-bold mb-4 text-gray-800">Add Rental Equipment</h2>
-              <form onSubmit={handleAddRental} className="flex flex-col gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Equipment Photo</label>
-                  <input type="file" accept="image/*" onChange={(e: any) => setRentalImageFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700" />
-                </div>
-                <input required placeholder="Equipment Name (e.g., Genie Boom Lift)" className="p-2 border rounded text-black" value={rentalForm.equipment_name} onChange={e => setRentalForm({ ...rentalForm, equipment_name: e.target.value })} />
-                <input required placeholder="Category (e.g., Lifts, Trenchers)" className="p-2 border rounded text-black bg-gray-50 font-semibold" value={rentalForm.category} onChange={e => setRentalForm({ ...rentalForm, category: e.target.value })} />
-                <input placeholder="Serial Number (Optional)" className="p-2 border rounded text-black" value={rentalForm.serial_number} onChange={e => setRentalForm({ ...rentalForm, serial_number: e.target.value })} />
-                <textarea placeholder="Equipment Description / Specs" className="p-2 border rounded text-black h-24" value={rentalForm.description || ''} onChange={e => setRentalForm({ ...rentalForm, description: e.target.value })} />
-                <div className="flex gap-4">
-                  <div className="w-1/2">
-                    <label className="block text-xs font-bold text-gray-500 uppercase">Daily Rate (MXN)</label>
-                    <input required type="number" step="0.01" className="p-2 w-full border rounded text-black font-bold text-orange-700" value={rentalForm.daily_rate} onChange={e => setRentalForm({ ...rentalForm, daily_rate: e.target.value })} />
-                  </div>
-                  <div className="w-1/2">
-                    <label className="block text-xs font-bold text-gray-500 uppercase">Weekly Rate (MXN)</label>
-                    <input required type="number" step="0.01" className="p-2 w-full border rounded text-black font-bold text-orange-700" value={rentalForm.weekly_rate} onChange={e => setRentalForm({ ...rentalForm, weekly_rate: e.target.value })} />
-                  </div>
-                </div>
-                <div className="flex justify-end gap-2 mt-4">
-                  <button type="button" onClick={() => setIsAddingRental(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
-                  <button type="submit" disabled={isUploading} className="px-4 py-2 bg-orange-600 text-white rounded font-bold hover:bg-orange-700">Save to Fleet</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {editingRental && isAdmin && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-orange-500 max-h-[90vh] overflow-y-auto">
-              <h2 className="text-2xl font-bold mb-4 text-gray-800">Edit Rental Details</h2>
-              <form onSubmit={handleUpdateRental} className="flex flex-col gap-4">
-                <input required placeholder="Equipment Name" className="p-2 border rounded text-black" value={editRentalForm.equipment_name} onChange={e => setEditRentalForm({ ...editRentalForm, equipment_name: e.target.value })} />
-                <input required placeholder="Category" className="p-2 border rounded text-black bg-gray-50 font-semibold" value={editRentalForm.category} onChange={e => setEditRentalForm({ ...editRentalForm, category: e.target.value })} />
-                <input placeholder="Serial Number" className="p-2 border rounded text-black" value={editRentalForm.serial_number} onChange={e => setEditRentalForm({ ...editRentalForm, serial_number: e.target.value })} />
-
-                <textarea placeholder="Equipment Description / Specs" className="p-2 border rounded text-black h-24" value={editRentalForm.description || ''} onChange={e => setEditRentalForm({ ...editRentalForm, description: e.target.value })} />
-
-                <div className="flex gap-4">
-                  <div className="w-1/2">
-                    <label className="block text-xs font-bold text-gray-500 uppercase">Daily Rate (MXN)</label>
-                    <input required type="number" step="0.01" className="p-2 w-full border rounded text-black font-bold text-orange-700" value={editRentalForm.daily_rate} onChange={e => setEditRentalForm({ ...editRentalForm, daily_rate: e.target.value })} />
-                  </div>
-                  <div className="w-1/2">
-                    <label className="block text-xs font-bold text-gray-500 uppercase">Weekly Rate (MXN)</label>
-                    <input required type="number" step="0.01" className="p-2 w-full border rounded text-black font-bold text-orange-700" value={editRentalForm.weekly_rate} onChange={e => setEditRentalForm({ ...editRentalForm, weekly_rate: e.target.value })} />
-                  </div>
-                </div>
-
-                <div className="bg-orange-50 p-3 rounded border border-orange-200 mt-2">
-                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Current Renter / Customer Name</label>
-                  <input placeholder="Leave blank if available" className="p-2 w-full border rounded text-black" value={editRentalForm.current_customer || ''} onChange={e => setEditRentalForm({ ...editRentalForm, current_customer: e.target.value })} />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1 mt-2">Upload/Replace Photo</label>
-                  <input type="file" accept="image/*" onChange={(e: any) => setRentalImageFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700" />
-                  {editingRental.image_url && <p className="text-xs text-orange-600 mt-1">An image is currently attached.</p>}
-                </div>
-
-                {/* QR CODE GENERATOR FOR STICKERS */}
-                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 flex flex-col items-center justify-center text-center mt-2">
-                  <h3 className="text-sm font-bold text-gray-800 uppercase mb-2">Machine QR Code</h3>
-                  <p className="text-xs text-gray-500 mb-3">Print this and stick it on the machine.</p>
-                  <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`https://fineedgemachinery.com/rentals/${editingRental.id}`)}`}
-                    alt="QR Code"
-                    className="border-4 border-white shadow-sm rounded"
-                  />
-                  <a
-                    href={`https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(`https://fineedgemachinery.com/rentals/${editingRental.id}`)}`}
-                    download={`${editingRental.serial_number}-QR.png`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-3 text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded transition border border-gray-300"
-                  >
-                    Download High-Res QR
-                  </a>
-                </div>
-
-                <div className="flex justify-end gap-2 mt-4 border-t pt-4">
-                  <button type="button" onClick={() => setEditingRental(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
-                  <button type="submit" disabled={isUploading} className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded font-bold">Update Equipment</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* --- REPAIR MANAGER MODAL --- */}
-        {selectedMachine && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-2xl shadow-xl flex flex-col max-h-[90vh]">
-              <div className="flex justify-between items-start mb-4">
-                <div><h2 className="text-2xl font-bold text-gray-800">{selectedMachine.machine_name}</h2><p className="text-gray-500">SN: {selectedMachine.serial_number}</p></div>
-                <button onClick={() => setSelectedMachine(null)} className="text-gray-500 hover:text-red-500 text-2xl font-bold">&times;</button>
-              </div>
-              {selectedMachine.image_url && <img src={selectedMachine.image_url} alt="Machine" className="w-full h-48 object-cover rounded mb-4 border" />}
-              <div className="bg-gray-100 p-4 rounded mb-4 flex justify-between text-lg"><span className="font-semibold text-gray-700">Total Invested Cost:</span><span className="font-bold text-orange-600">{formatMXN(calculateTotalCost(selectedMachine))}</span></div>
-              <h3 className="font-bold text-gray-700 border-b pb-2 mb-4">Parts & Labor Log</h3>
-              <div className="overflow-y-auto mb-6 flex-grow">
-                {selectedMachine.repair_logs?.length === 0 ? <p className="text-gray-500 text-sm italic">No repairs logged yet.</p> : (
-                  <ul className="flex flex-col gap-2">
-                    {selectedMachine.repair_logs?.map((log: any) => (
-                      <li key={log.id} className="flex justify-between items-start bg-gray-50 p-2 border rounded text-black">
-                        <div className="flex flex-col">
-                          <div><span className="font-semibold">{log.item_description}</span><span className="text-xs text-gray-500 ml-2">({log.labor_hours} hrs)</span></div>
-                          {log.parts_invoices && <span className="text-xs text-blue-600 mt-1 flex items-center gap-1">🧾 {log.parts_invoices.providers?.name} Inv: {log.parts_invoices.invoice_number}</span>}
-                        </div>
-                        {isAdmin && (
-                          <div className="flex items-center gap-4"><span className="font-medium text-green-700">{formatMXN(log.part_cost)}</span><button onClick={() => handleDeleteRepair(log.id)} className="text-red-500 hover:text-red-700 text-sm font-bold">X</button></div>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              {isAdmin && (
-                <form onSubmit={handleAddRepair} className="bg-blue-50 p-4 rounded border border-blue-100 flex flex-col gap-2">
-                  <div className="flex gap-2 w-full">
-                    <input required placeholder="Fix (e.g., New Motor)" className="flex-grow p-2 border rounded text-black" value={repairForm.item_description} onChange={e => setRepairForm({ ...repairForm, item_description: e.target.value })} />
-                    <input required type="number" step="0.01" placeholder="Cost" className="w-24 p-2 border rounded text-black" value={repairForm.part_cost} onChange={e => setRepairForm({ ...repairForm, part_cost: e.target.value })} />
-                    <input type="number" step="0.1" placeholder="Hours" className="w-24 p-2 border rounded text-black" value={repairForm.labor_hours} onChange={e => setRepairForm({ ...repairForm, labor_hours: e.target.value })} />
-                    <button type="submit" className="bg-green-600 hover:bg-green-700 text-white px-4 rounded font-bold">+</button>
-                  </div>
-                  <select className="w-full p-2 border rounded text-sm text-gray-700 mt-1" value={repairForm.invoice_id} onChange={e => setRepairForm({ ...repairForm, invoice_id: e.target.value })}>
-                    <option value="">-- Optional: Link to an Invoice --</option>
-                    {invoices.map((inv: any) => <option key={inv.id} value={inv.id}>{inv.providers?.name} | Inv: {inv.invoice_number}</option>)}
-                  </select>
-                </form>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* TAB 2: INVOICES & TAB 3: SAT (OMITTED FOR SPACE - REMAIN EXACTLY THE SAME) */}
+        {/* ==================== TAB 3: INVOICES (UNTOUCHED) ==================== */}
         {activeTab === 'invoices' && (
           <div className="bg-white p-6 rounded-lg shadow min-h-[500px]">
             <div className="flex justify-between items-center mb-6 border-b pb-4">
@@ -1117,6 +984,7 @@ export default function ERPPortal() {
           </div>
         )}
 
+        {/* ==================== TAB 4: SAT (UNTOUCHED) ==================== */}
         {activeTab === 'sat' && (
           <div className="bg-white p-6 rounded-lg shadow min-h-[500px]">
             <div className="flex justify-between items-center mb-6 border-b pb-4">
@@ -1154,7 +1022,675 @@ export default function ERPPortal() {
             </div>
           </div>
         )}
+
+        {/* ==================== TAB 5: ADVANCED RENTAL FINANCES ==================== */}
+        {activeTab === 'rental_finances' && (
+          <div className="bg-white p-6 rounded-lg shadow min-h-[500px]">
+            <div className="flex justify-between items-center mb-6 border-b pb-4">
+              <h2 className="text-2xl font-bold text-gray-800">Rental Ledger & ROI</h2>
+              {isAdmin && (
+                <div className="flex gap-4">
+                  <button onClick={() => setIsAddingMaintenance(true)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-bold shadow transition">+ Log Maintenance</button>
+                  <button onClick={() => setIsAddingRentalPayment(true)} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold shadow transition">+ Log Rental Income</button>
+                </div>
+              )}
+            </div>
+
+            {/* TOP METRICS ROW */}
+            <div className="flex gap-6 mb-10">
+              <div className="flex-1 bg-green-50 border-l-8 border-green-600 p-6 rounded-lg shadow-sm">
+                <span className="text-xs font-extrabold text-green-800 uppercase tracking-widest block mb-1">Gross Rental Revenue</span>
+                <span className="text-3xl font-black text-green-700">{formatMXN(totalRentalRevenue)}</span>
+              </div>
+              <div className="flex-1 bg-red-50 border-l-8 border-red-600 p-6 rounded-lg shadow-sm">
+                <span className="text-xs font-extrabold text-red-800 uppercase tracking-widest block mb-1">Total Maintenance Costs</span>
+                <span className="text-3xl font-black text-red-700">{formatMXN(totalRentalMaintenanceCost)}</span>
+              </div>
+              <div className="flex-1 bg-blue-50 border-l-8 border-blue-600 p-6 rounded-lg shadow-sm">
+                <span className="text-xs font-extrabold text-blue-800 uppercase tracking-widest block mb-1">Net Rental Profit</span>
+                <span className="text-3xl font-black text-blue-700">{formatMXN(netRentalProfit)}</span>
+              </div>
+            </div>
+
+            {/* ROI CARDS (NOW INCLUDING CAPEX) */}
+            <h3 className="text-xl font-bold text-gray-800 mb-4 border-b pb-2">Lifetime Machine ROI</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+              {rentals.map(machine => {
+                const machineRevenue = rentalLedger.filter(p => String(p.equipment_id) === String(machine.id)).reduce((sum, p) => sum + Number(p.amount_paid), 0);
+                const machineCost = rentalMaintenance.filter(m => String(m.equipment_id) === String(machine.id)).reduce((sum, m) => sum + Number(m.cost), 0);
+                const machinePurchaseCost = Number(machine.purchase_cost) || 0;
+
+                const netMachineROI = machineRevenue - machineCost - machinePurchaseCost;
+
+                return (
+                  <div key={machine.id} className={`bg-white border p-5 rounded-lg shadow-sm flex flex-col hover:shadow-md transition ${machine.status === 'Retired' ? 'border-gray-800 opacity-60' : 'border-gray-200'}`}>
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="font-extrabold text-gray-800 text-lg leading-tight">{machine.equipment_name}</span>
+                      {machine.status === 'Available' ? (
+                        <span className="w-3 h-3 rounded-full bg-green-500 shadow" title="Available"></span>
+                      ) : machine.status === 'Out on Rent' ? (
+                        <span className="w-3 h-3 rounded-full bg-orange-500 shadow" title="Out on Rent"></span>
+                      ) : machine.status === 'Retired' ? (
+                        <span className="w-3 h-3 rounded-full bg-gray-800 shadow" title="Retired / Out of Service"></span>
+                      ) : (
+                        <span className="w-3 h-3 rounded-full bg-gray-400 shadow" title="Maintenance / Transit"></span>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-500 font-mono mb-4 bg-gray-100 px-2 py-1 rounded self-start">SN: {machine.serial_number || 'N/A'}</span>
+
+                    <div className="flex justify-between text-xs font-bold mb-1">
+                      <span className="text-gray-500 uppercase">Gross Revenue:</span>
+                      <span className="text-green-600">{formatMXN(machineRevenue)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs font-bold mb-1">
+                      <span className="text-gray-500 uppercase">Maintenance:</span>
+                      <span className="text-red-600">-{formatMXN(machineCost)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs font-bold mb-4 pb-2 border-b">
+                      <span className="text-gray-500 uppercase">CapEx (Purchase):</span>
+                      <span className="text-red-600">-{formatMXN(machinePurchaseCost)}</span>
+                    </div>
+
+                    <div className="mt-auto pt-2 flex justify-between items-end">
+                      <span className="text-xs font-extrabold text-gray-800 uppercase tracking-widest">True Net ROI</span>
+                      <span className={`text-2xl font-black ${netMachineROI >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {formatMXN(netMachineROI)}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* LEDGER TOGGLE AND TABLES */}
+            <div className="flex justify-between items-center mb-4 border-b pb-2">
+              <h3 className="text-xl font-bold text-gray-800">Financial Ledgers</h3>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setRentalLedgerView('income')}
+                  className={`px-4 py-1.5 rounded font-bold text-sm transition ${rentalLedgerView === 'income' ? 'bg-green-600 text-white shadow' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
+                >
+                  Income Ledger
+                </button>
+                <button
+                  onClick={() => setRentalLedgerView('maintenance')}
+                  className={`px-4 py-1.5 rounded font-bold text-sm transition ${rentalLedgerView === 'maintenance' ? 'bg-red-600 text-white shadow' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
+                >
+                  Maintenance Ledger
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              {rentalLedgerView === 'income' ? (
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-green-50 text-green-800">
+                      <th className="p-3 border-b font-bold uppercase text-xs tracking-wider">Date</th>
+                      <th className="p-3 border-b font-bold uppercase text-xs tracking-wider">Equipment Rented</th>
+                      <th className="p-3 border-b font-bold uppercase text-xs tracking-wider">Customer Name</th>
+                      <th className="p-3 border-b font-bold uppercase text-xs tracking-wider">Amount Paid</th>
+                      <th className="p-3 border-b font-bold uppercase text-xs tracking-wider">Notes</th>
+                      <th className="p-3 border-b font-bold uppercase text-xs tracking-wider">Receipt</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rentalLedger.length === 0 ? <tr><td colSpan={6} className="p-6 text-center text-gray-500 font-bold">No rental payments logged yet.</td></tr> : (
+                      rentalLedger.map((log: any) => (
+                        <tr key={log.id} className="hover:bg-gray-50 border-b text-gray-800">
+                          <td className="p-3 text-sm font-semibold">{log.payment_date}</td>
+                          <td className="p-3 text-sm font-bold text-gray-700">
+                            {log.rental_fleet?.equipment_name || 'Deleted Equipment'}
+                            <span className="block text-xs text-gray-400 font-mono font-normal">SN: {log.rental_fleet?.serial_number || 'N/A'}</span>
+                          </td>
+                          <td className="p-3 text-sm">{log.customer_name}</td>
+                          <td className="p-3 font-extrabold text-green-700">+{formatMXN(log.amount_paid)}</td>
+                          <td className="p-3 text-sm text-gray-600 italic max-w-xs truncate">{log.notes || '-'}</td>
+                          <td className="p-3">
+                            {log.receipt_url ? (
+                              <a href={log.receipt_url} target="_blank" rel="noreferrer" className="text-green-600 hover:underline text-sm font-bold">📄 View</a>
+                            ) : <span className="text-gray-400 text-sm">-</span>}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              ) : (
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-red-50 text-red-800">
+                      <th className="p-3 border-b font-bold uppercase text-xs tracking-wider">Service Date</th>
+                      <th className="p-3 border-b font-bold uppercase text-xs tracking-wider">Equipment Serviced</th>
+                      <th className="p-3 border-b font-bold uppercase text-xs tracking-wider">Service Description</th>
+                      <th className="p-3 border-b font-bold uppercase text-xs tracking-wider">Invoice #</th>
+                      <th className="p-3 border-b font-bold uppercase text-xs tracking-wider">Cost</th>
+                      <th className="p-3 border-b font-bold uppercase text-xs tracking-wider">Invoice</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rentalMaintenance.length === 0 ? <tr><td colSpan={6} className="p-6 text-center text-gray-500 font-bold">No maintenance records logged yet.</td></tr> : (
+                      rentalMaintenance.map((log: any) => (
+                        <tr key={log.id} className="hover:bg-gray-50 border-b text-gray-800">
+                          <td className="p-3 text-sm font-semibold">{log.service_date}</td>
+                          <td className="p-3 text-sm font-bold text-gray-700">
+                            {log.rental_fleet?.equipment_name || 'Deleted Equipment'}
+                            <span className="block text-xs text-gray-400 font-mono font-normal">SN: {log.rental_fleet?.serial_number || 'N/A'}</span>
+                          </td>
+                          <td className="p-3 text-sm">{log.description}</td>
+                          <td className="p-3 text-sm text-gray-500">{log.invoice_number || '-'}</td>
+                          <td className="p-3 font-extrabold text-red-600">-{formatMXN(log.cost)}</td>
+                          <td className="p-3">
+                            {log.invoice_url ? (
+                              <a href={log.invoice_url} target="_blank" rel="noreferrer" className="text-red-600 hover:underline text-sm font-bold">📄 View</a>
+                            ) : <span className="text-gray-400 text-sm">-</span>}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* --- MODALS (MACHINERY - USD LABELS ADDED) --- */}
+        {isAdding && isAdmin && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto border-t-8 border-blue-600">
+              <h2 className="text-2xl font-bold mb-4 text-gray-800">Log New Machine</h2>
+              <form onSubmit={handleAddMachine} className="flex flex-col gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Machine Photo</label>
+                  <input type="file" accept="image/*" onChange={(e: any) => setImageFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Pedimento Document</label>
+                  <input type="file" accept=".pdf,image/*" onChange={(e: any) => setPedimentoFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
+                </div>
+                <input required placeholder="Machine Name" className="p-2 border rounded text-black" value={formData.machine_name} onChange={e => setFormData({ ...formData, machine_name: e.target.value })} />
+                <input required placeholder="Category (e.g., Laser, CNC, Welder)" className="p-2 border rounded text-black bg-gray-50 font-semibold" value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })} />
+                <input required placeholder="Serial Number" className="p-2 border rounded text-black" value={formData.serial_number} onChange={e => setFormData({ ...formData, serial_number: e.target.value })} />
+                <textarea placeholder="Machine Description / Specs" className="p-2 border rounded text-black h-24" value={formData.description || ''} onChange={e => setFormData({ ...formData, description: e.target.value })} />
+                <input type="url" placeholder="YouTube/Drive Video Link (Optional)" className="p-2 border rounded text-black" value={formData.video_url} onChange={e => setFormData({ ...formData, video_url: e.target.value })} />
+                <div className="flex gap-4">
+                  <div className="w-1/2">
+                    <label className="block text-xs font-bold text-gray-500 uppercase">Purchase Price (USD)</label>
+                    <input type="number" step="0.01" className="p-2 w-full border rounded text-black font-bold" value={formData.purchase_price} onChange={e => setFormData({ ...formData, purchase_price: e.target.value })} />
+                  </div>
+                  <div className="w-1/2">
+                    <label className="flex justify-between text-xs font-bold text-gray-500 uppercase">
+                      <span>IVA Paid (USD)</span>
+                      <button type="button" tabIndex={-1} onClick={() => setFormData({ ...formData, purchase_iva: calculateIva(formData.purchase_price || 0) })} className="text-blue-600 hover:underline">Auto 16%</button>
+                    </label>
+                    <input type="number" step="0.01" className="p-2 w-full border rounded text-black text-red-600" value={formData.purchase_iva} onChange={e => setFormData({ ...formData, purchase_iva: e.target.value })} />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase">Shipping & Import (USD - No IVA)</label>
+                  <div className="flex gap-4 mt-1">
+                    <input type="number" step="0.01" placeholder="Shipping Cost" className="p-2 w-1/2 border rounded text-black" value={formData.shipping_in_cost} onChange={e => setFormData({ ...formData, shipping_in_cost: e.target.value })} />
+                    <input type="number" step="0.01" placeholder="Import Fee" className="p-2 w-1/2 border rounded text-black" value={formData.import_fee} onChange={e => setFormData({ ...formData, import_fee: e.target.value })} />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 mt-4">
+                  <button type="button" onClick={() => setIsAdding(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
+                  <button type="submit" disabled={isUploading} className="px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-700">Save Machine</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {editingMachine && isAdmin && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-blue-500 max-h-[90vh] overflow-y-auto">
+              <h2 className="text-2xl font-bold mb-4 text-gray-800">Edit Machine Details</h2>
+              <form onSubmit={handleUpdateMachine} className="flex flex-col gap-4">
+                <input required placeholder="Machine Name" className="p-2 border rounded text-black" value={editFormData.machine_name} onChange={e => setEditFormData({ ...editFormData, machine_name: e.target.value })} />
+                <input required placeholder="Category (e.g., Laser, CNC, Welder)" className="p-2 border rounded text-black bg-gray-50 font-semibold" value={editFormData.category} onChange={e => setEditFormData({ ...editFormData, category: e.target.value })} />
+                <input required placeholder="Serial Number" className="p-2 border rounded text-black" value={editFormData.serial_number} onChange={e => setEditFormData({ ...editFormData, serial_number: e.target.value })} />
+                <textarea placeholder="Machine Description / Specs" className="p-2 border rounded text-black h-24" value={editFormData.description || ''} onChange={e => setEditFormData({ ...editFormData, description: e.target.value })} />
+                <input type="url" placeholder="YouTube/Drive Video Link (Optional)" className="p-2 border rounded text-black" value={editFormData.video_url} onChange={e => setEditFormData({ ...editFormData, video_url: e.target.value })} />
+                <div className="flex gap-4">
+                  <div className="w-1/2">
+                    <label className="block text-xs font-bold text-gray-500 uppercase">Purchase Price (USD)</label>
+                    <input type="number" step="0.01" className="p-2 w-full border rounded text-black font-bold" value={editFormData.purchase_price} onChange={e => setEditFormData({ ...editFormData, purchase_price: e.target.value })} />
+                  </div>
+                  <div className="w-1/2">
+                    <label className="flex justify-between text-xs font-bold text-gray-500 uppercase">
+                      <span>IVA Paid (USD)</span>
+                      <button type="button" tabIndex={-1} onClick={() => setEditFormData({ ...editFormData, purchase_iva: calculateIva(editFormData.purchase_price || 0) })} className="text-blue-600 hover:underline">Auto 16%</button>
+                    </label>
+                    <input type="number" step="0.01" className="p-2 w-full border rounded text-black text-red-600" value={editFormData.purchase_iva} onChange={e => setEditFormData({ ...editFormData, purchase_iva: e.target.value })} />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase">Shipping & Import (USD - No IVA)</label>
+                  <div className="flex gap-4 mt-1">
+                    <input type="number" step="0.01" placeholder="Shipping Cost" className="p-2 w-1/2 border rounded text-black" value={editFormData.shipping_in_cost} onChange={e => setEditFormData({ ...editFormData, shipping_in_cost: e.target.value })} />
+                    <input type="number" step="0.01" placeholder="Import Fee" className="p-2 w-1/2 border rounded text-black" value={editFormData.import_fee} onChange={e => setEditFormData({ ...editFormData, import_fee: e.target.value })} />
+                  </div>
+                </div>
+                {editingMachine.status === 'Sold' && (
+                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded mt-2">
+                    <h3 className="text-xs font-bold text-gray-700 mb-2 uppercase">Accounts Receivable Dates</h3>
+                    <div className="flex gap-4">
+                      <div className="w-1/2">
+                        <label className="block text-xs font-bold text-gray-500 mb-1">Invoice Sent</label>
+                        <input type="date" className="p-2 w-full border rounded text-black" value={editFormData.invoice_date} onChange={e => setEditFormData({ ...editFormData, invoice_date: e.target.value })} />
+                      </div>
+                      <div className="w-1/2">
+                        <label className="block text-xs font-bold text-gray-500 mb-1">Due Date</label>
+                        <input type="date" className="p-2 w-full border rounded text-black" value={editFormData.due_date} onChange={e => setEditFormData({ ...editFormData, due_date: e.target.value })} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1 mt-2">Upload/Replace Pedimento</label>
+                  <input type="file" accept=".pdf,image/*" onChange={(e: any) => setPedimentoFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
+                  {editingMachine.pedimento_url && <p className="text-xs text-blue-600 mt-1">A pedimento is currently attached.</p>}
+                </div>
+                <div className="flex justify-end gap-2 mt-4">
+                  <button type="button" onClick={() => setEditingMachine(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
+                  <button type="submit" disabled={isUploading} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold">Update Details</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* --- MACHINERY SELL MODAL (USD) --- */}
+        {sellingMachine && isAdmin && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-green-600">
+              <h2 className="text-2xl font-bold mb-4 text-gray-800">Complete Sale: {sellingMachine.machine_name}</h2>
+              <form onSubmit={handleSellMachine} className="flex flex-col gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Sale Price (USD)</label>
+                  <input required type="number" step="0.01" className="p-2 w-full border rounded text-black font-bold text-lg" value={sellForm.sale_price} onChange={e => setSellForm({ ...sellForm, sale_price: e.target.value })} />
+                </div>
+                <div>
+                  <label className="flex justify-between text-xs font-bold text-gray-500 uppercase mb-1">
+                    <span>IVA Charged (USD)</span>
+                    <button type="button" tabIndex={-1} onClick={() => setSellForm({ ...sellForm, sale_iva: calculateIva(sellForm.sale_price || 0) })} className="text-blue-600 hover:underline">Auto 16%</button>
+                  </label>
+                  <input required type="number" step="0.01" className="p-2 w-full border rounded text-black text-red-600" value={sellForm.sale_iva} onChange={e => setSellForm({ ...sellForm, sale_iva: e.target.value })} />
+                </div>
+                <label className="flex items-center gap-2 mt-2 p-3 bg-gray-50 border rounded cursor-pointer hover:bg-gray-100">
+                  <input type="checkbox" className="w-5 h-5 text-green-600" checked={sellForm.is_paid} onChange={e => setSellForm({ ...sellForm, is_paid: e.target.checked })} />
+                  <span className="text-sm font-bold text-gray-700">Customer Paid in Full?</span>
+                </label>
+                <div className="flex gap-4">
+                  <div className="w-1/2">
+                    <label className="block text-xs font-bold text-gray-500 mb-1">Invoice Date</label>
+                    <input type="date" className="p-2 w-full border rounded text-black" value={sellForm.invoice_date} onChange={e => handleInvoiceDateChange(e, 'sellForm')} />
+                  </div>
+                  <div className="w-1/2">
+                    <label className="block text-xs font-bold text-gray-500 mb-1">Due Date</label>
+                    <input type="date" className="p-2 w-full border rounded text-black" value={sellForm.due_date} onChange={e => setSellForm({ ...sellForm, due_date: e.target.value })} />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1 mt-2">Upload Outbound Invoice</label>
+                  <input type="file" accept=".pdf,image/*" onChange={(e: any) => setSaleInvoiceFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700" />
+                </div>
+                <div className="flex justify-end gap-2 mt-4 border-t pt-4">
+                  <button type="button" onClick={() => { setSellingMachine(null); fetchInventory(); }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded font-bold">Cancel</button>
+                  <button type="submit" disabled={isUploading} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded font-bold">Finalize Sale</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* --- ADD RENTAL MODAL (MXN) --- */}
+        {isAddingRental && isAdmin && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto border-t-8 border-orange-500">
+              <h2 className="text-2xl font-bold mb-4 text-gray-800">Add Rental Equipment</h2>
+              <form onSubmit={handleAddRental} className="flex flex-col gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Equipment Photo</label>
+                  <input type="file" accept="image/*" onChange={(e: any) => setRentalImageFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700" />
+                </div>
+                <input required placeholder="Equipment Name (e.g., Genie Boom Lift)" className="p-2 border rounded text-black" value={rentalForm.equipment_name} onChange={e => setRentalForm({ ...rentalForm, equipment_name: e.target.value })} />
+                <input required placeholder="Category (e.g., Lifts, Trenchers)" className="p-2 border rounded text-black bg-gray-50 font-semibold" value={rentalForm.category} onChange={e => setRentalForm({ ...rentalForm, category: e.target.value })} />
+                <input placeholder="Serial Number (Optional)" className="p-2 border rounded text-black" value={rentalForm.serial_number} onChange={e => setRentalForm({ ...rentalForm, serial_number: e.target.value })} />
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Initial Purchase Cost (MXN)</label>
+                  <input required type="number" step="0.01" placeholder="e.g. 150000" className="p-2 w-full border rounded text-black font-bold text-red-600" value={rentalForm.purchase_cost} onChange={e => setRentalForm({ ...rentalForm, purchase_cost: e.target.value })} />
+                </div>
+
+                <textarea placeholder="Equipment Description / Specs" className="p-2 border rounded text-black h-24" value={rentalForm.description || ''} onChange={e => setRentalForm({ ...rentalForm, description: e.target.value })} />
+                <div className="flex gap-4">
+                  <div className="w-1/2">
+                    <label className="block text-xs font-bold text-gray-500 uppercase">Daily Rate (MXN)</label>
+                    <input required type="number" step="0.01" className="p-2 w-full border rounded text-black font-bold text-orange-700" value={rentalForm.daily_rate} onChange={e => setRentalForm({ ...rentalForm, daily_rate: e.target.value })} />
+                  </div>
+                  <div className="w-1/2">
+                    <label className="block text-xs font-bold text-gray-500 uppercase">Weekly Rate (MXN)</label>
+                    <input required type="number" step="0.01" className="p-2 w-full border rounded text-black font-bold text-orange-700" value={rentalForm.weekly_rate} onChange={e => setRentalForm({ ...rentalForm, weekly_rate: e.target.value })} />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 mt-4">
+                  <button type="button" onClick={() => setIsAddingRental(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
+                  <button type="submit" disabled={isUploading} className="px-4 py-2 bg-orange-600 text-white rounded font-bold hover:bg-orange-700">Save to Fleet</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* --- EDIT RENTAL MODAL (WITH PRO STICKER PREVIEW) --- */}
+        {editingRental && isAdmin && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-orange-500 max-h-[90vh] overflow-y-auto">
+              <h2 className="text-2xl font-bold mb-4 text-gray-800">Edit Rental Details</h2>
+              <form onSubmit={handleUpdateRental} className="flex flex-col gap-4">
+                <input required placeholder="Equipment Name" className="p-2 border rounded text-black" value={editRentalForm.equipment_name} onChange={e => setEditRentalForm({ ...editRentalForm, equipment_name: e.target.value })} />
+                <input required placeholder="Category" className="p-2 border rounded text-black bg-gray-50 font-semibold" value={editRentalForm.category} onChange={e => setEditRentalForm({ ...editRentalForm, category: e.target.value })} />
+                <input placeholder="Serial Number" className="p-2 border rounded text-black" value={editRentalForm.serial_number} onChange={e => setEditRentalForm({ ...editRentalForm, serial_number: e.target.value })} />
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Initial Purchase Cost (MXN)</label>
+                  <input required type="number" step="0.01" className="p-2 w-full border rounded text-black font-bold text-red-600" value={editRentalForm.purchase_cost} onChange={e => setEditRentalForm({ ...editRentalForm, purchase_cost: e.target.value })} />
+                </div>
+
+                <textarea placeholder="Equipment Description / Specs" className="p-2 border rounded text-black h-24" value={editRentalForm.description || ''} onChange={e => setEditRentalForm({ ...editRentalForm, description: e.target.value })} />
+
+                <div className="flex gap-4">
+                  <div className="w-1/2">
+                    <label className="block text-xs font-bold text-gray-500 uppercase">Daily Rate (MXN)</label>
+                    <input required type="number" step="0.01" className="p-2 w-full border rounded text-black font-bold text-orange-700" value={editRentalForm.daily_rate} onChange={e => setEditRentalForm({ ...editRentalForm, daily_rate: e.target.value })} />
+                  </div>
+                  <div className="w-1/2">
+                    <label className="block text-xs font-bold text-gray-500 uppercase">Weekly Rate (MXN)</label>
+                    <input required type="number" step="0.01" className="p-2 w-full border rounded text-black font-bold text-orange-700" value={editRentalForm.weekly_rate} onChange={e => setEditRentalForm({ ...editRentalForm, weekly_rate: e.target.value })} />
+                  </div>
+                </div>
+
+                <div className="bg-orange-50 p-3 rounded border border-orange-200 mt-2">
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Current Renter / Customer Name</label>
+                  <input placeholder="Leave blank if available" className="p-2 w-full border rounded text-black" value={editRentalForm.current_customer || ''} onChange={e => setEditRentalForm({ ...editRentalForm, current_customer: e.target.value })} />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1 mt-2">Upload/Replace Photo</label>
+                  <input type="file" accept="image/*" onChange={(e: any) => setRentalImageFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700" />
+                  {editingRental.image_url && <p className="text-xs text-orange-600 mt-1">An image is currently attached.</p>}
+                </div>
+
+                {/* BRAND NEW: PRO STICKER PREVIEW BUTTON */}
+                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 flex flex-col items-center justify-center text-center mt-2">
+                  <h3 className="text-sm font-bold text-gray-800 uppercase mb-2">Machine ID Sticker</h3>
+                  <p className="text-xs text-gray-500 mb-4">Generate the physical, branded QR sticker for this machine.</p>
+                  <button
+                    type="button"
+                    onClick={() => setStickerRental(editingRental)}
+                    className="w-full bg-gray-800 hover:bg-black text-white font-bold py-3 px-4 rounded transition shadow uppercase tracking-wider text-sm"
+                  >
+                    👁️ Preview & Print Sticker
+                  </button>
+                </div>
+
+                <div className="flex justify-end gap-2 mt-4 border-t pt-4">
+                  <button type="button" onClick={() => setEditingRental(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
+                  <button type="submit" disabled={isUploading} className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded font-bold">Update Equipment</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* --- ADD RENTAL PAYMENT MODAL --- */}
+        {isAddingRentalPayment && isAdmin && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-green-600 max-h-[90vh] overflow-y-auto">
+              <h2 className="text-2xl font-bold mb-4 text-gray-800">Log Rental Payment</h2>
+              <form onSubmit={handleAddRentalPayment} className="flex flex-col gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Payment Date</label>
+                  <input required type="date" className="p-2 w-full border rounded text-black" value={rentalPaymentForm.payment_date} onChange={e => setRentalPaymentForm({ ...rentalPaymentForm, payment_date: e.target.value })} />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Select Equipment</label>
+                  <select required className="p-2 w-full border rounded text-black bg-gray-50" value={rentalPaymentForm.equipment_id} onChange={e => setRentalPaymentForm({ ...rentalPaymentForm, equipment_id: e.target.value })}>
+                    <option value="">-- Choose Machine --</option>
+                    {rentals.map((r: any) => (
+                      <option key={r.id} value={r.id}>{r.equipment_name} (SN: {r.serial_number || 'N/A'})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <input required placeholder="Customer Name" className="p-2 border rounded text-black" value={rentalPaymentForm.customer_name} onChange={e => setRentalPaymentForm({ ...rentalPaymentForm, customer_name: e.target.value })} />
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Amount Paid (MXN)</label>
+                  <input required type="number" step="0.01" placeholder="e.g. 11000" className="p-2 w-full border rounded text-black font-extrabold text-green-700 text-lg" value={rentalPaymentForm.amount_paid} onChange={e => setRentalPaymentForm({ ...rentalPaymentForm, amount_paid: e.target.value })} />
+                </div>
+
+                <textarea placeholder="Notes (e.g. 1 Week Rental + Delivery Fee)" className="p-2 border rounded text-black h-20" value={rentalPaymentForm.notes} onChange={e => setRentalPaymentForm({ ...rentalPaymentForm, notes: e.target.value })} />
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Upload Receipt (Optional)</label>
+                  <input type="file" accept=".pdf,image/*" onChange={(e: any) => setRentalPaymentFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700" />
+                </div>
+
+                <div className="flex justify-end gap-2 mt-4 border-t pt-4">
+                  <button type="button" onClick={() => setIsAddingRentalPayment(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded font-bold">Cancel</button>
+                  <button type="submit" disabled={isUploading} className="px-4 py-2 bg-green-600 text-white rounded font-bold hover:bg-green-700 shadow">Save Payment</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* --- ADD RENTAL MAINTENANCE MODAL --- */}
+        {isAddingMaintenance && isAdmin && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl border-t-8 border-red-600 max-h-[90vh] overflow-y-auto">
+              <h2 className="text-2xl font-bold mb-4 text-gray-800">Log Rental Maintenance</h2>
+              <form onSubmit={handleAddRentalMaintenance} className="flex flex-col gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Service Date</label>
+                  <input required type="date" className="p-2 w-full border rounded text-black" value={rentalMaintenanceForm.service_date} onChange={e => setRentalMaintenanceForm({ ...rentalMaintenanceForm, service_date: e.target.value })} />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Select Equipment</label>
+                  <select required className="p-2 w-full border rounded text-black bg-gray-50" value={rentalMaintenanceForm.equipment_id} onChange={e => setRentalMaintenanceForm({ ...rentalMaintenanceForm, equipment_id: e.target.value })}>
+                    <option value="">-- Choose Machine --</option>
+                    {rentals.map((r: any) => (
+                      <option key={r.id} value={r.id}>{r.equipment_name} (SN: {r.serial_number || 'N/A'})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Service Description</label>
+                  <input required placeholder="e.g. New Tracks, Oil Change" className="p-2 w-full border rounded text-black" value={rentalMaintenanceForm.description} onChange={e => setRentalMaintenanceForm({ ...rentalMaintenanceForm, description: e.target.value })} />
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="w-1/2">
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Invoice / Ref #</label>
+                    <input placeholder="Optional" className="p-2 w-full border rounded text-black" value={rentalMaintenanceForm.invoice_number} onChange={e => setRentalMaintenanceForm({ ...rentalMaintenanceForm, invoice_number: e.target.value })} />
+                  </div>
+                  <div className="w-1/2">
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Total Cost (MXN)</label>
+                    <input required type="number" step="0.01" placeholder="e.g. 4500" className="p-2 w-full border rounded text-black font-extrabold text-red-600 text-lg" value={rentalMaintenanceForm.cost} onChange={e => setRentalMaintenanceForm({ ...rentalMaintenanceForm, cost: e.target.value })} />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Upload Invoice (Optional)</label>
+                  <input type="file" accept=".pdf,image/*" onChange={(e: any) => setRentalMaintenanceFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-red-50 file:text-red-700" />
+                </div>
+
+                <div className="flex justify-end gap-2 mt-4 border-t pt-4">
+                  <button type="button" onClick={() => setIsAddingMaintenance(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded font-bold">Cancel</button>
+                  <button type="submit" disabled={isUploading} className="px-4 py-2 bg-red-600 text-white rounded font-bold hover:bg-red-700 shadow">Save Expense</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* --- REPAIR MANAGER MODAL (MACHINERY - UNTOUCHED) --- */}
+        {selectedMachine && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-2xl shadow-xl flex flex-col max-h-[90vh]">
+              <div className="flex justify-between items-start mb-4">
+                <div><h2 className="text-2xl font-bold text-gray-800">{selectedMachine.machine_name}</h2><p className="text-gray-500">SN: {selectedMachine.serial_number}</p></div>
+                <button onClick={() => setSelectedMachine(null)} className="text-gray-500 hover:text-red-500 text-2xl font-bold">&times;</button>
+              </div>
+              {selectedMachine.image_url && <img src={selectedMachine.image_url} alt="Machine" className="w-full h-48 object-cover rounded mb-4 border" />}
+              <div className="bg-gray-100 p-4 rounded mb-4 flex justify-between text-lg"><span className="font-semibold text-gray-700">Total Invested Cost:</span><span className="font-bold text-orange-600">{formatUSD(calculateTotalCost(selectedMachine))}</span></div>
+              <h3 className="font-bold text-gray-700 border-b pb-2 mb-4">Parts & Labor Log</h3>
+              <div className="overflow-y-auto mb-6 flex-grow">
+                {selectedMachine.repair_logs?.length === 0 ? <p className="text-gray-500 text-sm italic">No repairs logged yet.</p> : (
+                  <ul className="flex flex-col gap-2">
+                    {selectedMachine.repair_logs?.map((log: any) => (
+                      <li key={log.id} className="flex justify-between items-start bg-gray-50 p-2 border rounded text-black">
+                        <div className="flex flex-col">
+                          <div><span className="font-semibold">{log.item_description}</span><span className="text-xs text-gray-500 ml-2">({log.labor_hours} hrs)</span></div>
+                          {log.parts_invoices && <span className="text-xs text-blue-600 mt-1 flex items-center gap-1">🧾 {log.parts_invoices.providers?.name} Inv: {log.parts_invoices.invoice_number}</span>}
+                        </div>
+                        {isAdmin && (
+                          <div className="flex items-center gap-4"><span className="font-medium text-green-700">{formatUSD(log.part_cost)}</span><button onClick={() => handleDeleteRepair(log.id)} className="text-red-500 hover:text-red-700 text-sm font-bold">X</button></div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {isAdmin && (
+                <form onSubmit={handleAddRepair} className="bg-blue-50 p-4 rounded border border-blue-100 flex flex-col gap-2">
+                  <div className="flex gap-2 w-full">
+                    <input required placeholder="Fix (e.g., New Motor)" className="flex-grow p-2 border rounded text-black" value={repairForm.item_description} onChange={e => setRepairForm({ ...repairForm, item_description: e.target.value })} />
+                    <input required type="number" step="0.01" placeholder="Cost" className="w-24 p-2 border rounded text-black" value={repairForm.part_cost} onChange={e => setRepairForm({ ...repairForm, part_cost: e.target.value })} />
+                    <input type="number" step="0.1" placeholder="Hours" className="w-24 p-2 border rounded text-black" value={repairForm.labor_hours} onChange={e => setRepairForm({ ...repairForm, labor_hours: e.target.value })} />
+                    <button type="submit" className="bg-green-600 hover:bg-green-700 text-white px-4 rounded font-bold">+</button>
+                  </div>
+                  <select className="w-full p-2 border rounded text-sm text-gray-700 mt-1" value={repairForm.invoice_id} onChange={e => setRepairForm({ ...repairForm, invoice_id: e.target.value })}>
+                    <option value="">-- Optional: Link to an Invoice --</option>
+                    {invoices.map((inv: any) => <option key={inv.id} value={inv.id}>{inv.providers?.name} | Inv: {inv.invoice_number}</option>)}
+                  </select>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* --- CASH BOX MODALS (UNTOUCHED) --- */}
+        {showCashHistory && isAdmin && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-lg shadow-xl border-t-8 border-green-800 flex flex-col max-h-[90vh]">
+              <div className="flex justify-between items-start mb-4">
+                <h2 className="text-2xl font-bold text-gray-800">Cash Box History</h2>
+                <button onClick={() => setShowCashHistory(false)} className="text-gray-500 hover:text-red-500 text-2xl font-bold">&times;</button>
+              </div>
+              <div className="bg-gray-100 p-4 rounded mb-4 flex justify-between text-lg">
+                <span className="font-semibold text-gray-700">Current Balance:</span>
+                <span className="font-bold text-green-800">{formatMXN(cashBoxTotal)}</span>
+              </div>
+              <div className="overflow-y-auto mb-2 flex-grow">
+                {cashBoxLogs.length === 0 ? <p className="text-gray-500 text-sm italic">No cash logged yet.</p> : (
+                  <ul className="flex flex-col gap-2">
+                    {[...cashBoxLogs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((log: any) => (
+                      <li key={log.id} className="flex justify-between items-center bg-gray-50 p-3 border rounded text-black">
+                        <div className="flex flex-col">
+                          <span className="text-xs text-gray-500 font-bold">{log.date}</span>
+                          <span className="font-semibold text-sm">{log.notes || 'No notes'}</span>
+                        </div>
+                        <span className={`font-bold ${Number(log.amount) >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                          {Number(log.amount) >= 0 ? '+' : ''}{formatMXN(Number(log.amount))}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="flex justify-end mt-4 pt-4 border-t">
+                <button onClick={() => setShowCashHistory(false)} className="px-6 py-2 bg-gray-200 text-gray-700 font-bold rounded hover:bg-gray-300">Close</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isAddingCash && isAdmin && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-sm shadow-xl border-t-8 border-green-800">
+              <h2 className="text-2xl font-bold mb-2 text-gray-800">Update Cash Box</h2>
+              <form onSubmit={handleAddCash} className="flex flex-col gap-4 mt-4">
+                <input required type="date" className="p-2 border rounded text-black" value={cashForm.date} onChange={e => setCashForm({ ...cashForm, date: e.target.value })} />
+                <input required type="number" step="0.01" placeholder="Amount (Use - to subtract)" className="p-2 border rounded text-black font-bold text-lg" value={cashForm.amount} onChange={e => setCashForm({ ...cashForm, amount: e.target.value })} />
+                <input type="text" placeholder="Notes (e.g., Sold scrap, bought lunch)" className="p-2 border rounded text-black" value={cashForm.notes} onChange={e => setCashForm({ ...cashForm, notes: e.target.value })} />
+                <div className="flex justify-end gap-2 mt-2">
+                  <button type="button" onClick={() => setIsAddingCash(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
+                  <button type="submit" className="px-4 py-2 bg-green-800 hover:bg-green-900 text-white rounded font-bold shadow">Save Log</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* ========================================= BRANDED QR STICKER PRINTER ========================================= */}
+      {stickerRental && (
+        <div className="fixed inset-0 bg-gray-900 bg-opacity-90 flex items-center justify-center z-[100] p-4 print:bg-white print:p-0 print:block">
+
+          <div className="bg-white rounded-xl shadow-2xl p-8 max-w-sm w-full print:shadow-none print:p-0 print:max-w-none text-center border-t-8 border-orange-600 print:border-none">
+
+            {/* Header (Hidden on Print) */}
+            <div className="print:hidden flex justify-between items-center mb-6 border-b pb-2">
+              <h2 className="font-bold text-gray-700 uppercase tracking-widest text-sm">Sticker Preview</h2>
+              <button onClick={() => setStickerRental(null)} className="text-red-500 hover:text-red-700 font-bold text-2xl leading-none">&times;</button>
+            </div>
+
+            {/* THE ACTUAL PRINTABLE STICKER */}
+            <div className="border-4 border-gray-900 p-6 rounded-xl bg-white inline-block w-full">
+
+              <h1 className="text-4xl font-black text-gray-900 tracking-tighter uppercase mb-0 leading-none">Fine Edge</h1>
+              <h2 className="text-2xl font-extrabold text-orange-600 tracking-widest uppercase mb-4 leading-none">Rentals</h2>
+
+              <div className="bg-gray-100 p-4 rounded-lg mb-4 inline-block border-2 border-dashed border-gray-300">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(`https://fineedgemachinery.com/rentals/${stickerRental.id}`)}&margin=1`}
+                  alt="QR Code"
+                  className="w-48 h-48 mx-auto mix-blend-multiply"
+                />
+              </div>
+
+              <div className="bg-gray-900 text-white py-3 px-4 rounded mb-4">
+                <p className="text-xs font-bold text-orange-400 uppercase tracking-widest mb-1">Scan To Rent</p>
+                <p className="text-sm font-bold tracking-wide">Or Call: 625-119-1400</p>
+              </div>
+
+              <div className="text-left border-t-2 border-gray-200 pt-3">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Unit ID</p>
+                <p className="text-sm font-black text-gray-800 leading-tight">{stickerRental.equipment_name}</p>
+                <p className="text-xs font-mono text-gray-500 mt-1 font-bold">SN: {stickerRental.serial_number || 'N/A'}</p>
+              </div>
+
+            </div>
+
+            {/* Print Button (Hidden on Print) */}
+            <div className="print:hidden mt-8">
+              <button onClick={() => window.print()} className="w-full px-6 py-4 bg-orange-600 text-white font-black rounded hover:bg-orange-700 shadow-lg uppercase tracking-widest text-sm transition transform hover:-translate-y-1">
+                🖨️ Print Sticker
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
       {/* ========================================= PRINTABLE PDF SPEC SHEET ========================================= */}
       {specSheetMachine && (
